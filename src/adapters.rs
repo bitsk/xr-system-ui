@@ -95,19 +95,33 @@ pub fn network() -> Result<Value> {
     )
 }
 pub fn ime() -> Result<Value> {
-    let current = command("fcitx5-remote", &["-n"])?;
+    let owner = running_ime_owner()?;
+    // Use the unique connection name, so a daemon exiting between NameHasOwner
+    // and this query cannot turn a read-only probe into D-Bus activation.
+    let current = tuple_string(command(
+        "gdbus",
+        &[
+            "call",
+            "--session",
+            "--dest",
+            &owner,
+            "--object-path",
+            "/controller",
+            "--method",
+            "org.fcitx.Fcitx.Controller1.CurrentInputMethod",
+        ],
+    )?)?;
     ensure!(
         !current.is_empty(),
         "Fcitx has no current input method/context"
     );
-    let active = command("fcitx5-remote", &[])?;
     let methods = command(
         "gdbus",
         &[
             "call",
             "--session",
             "--dest",
-            "org.fcitx.Fcitx5",
+            &owner,
             "--object-path",
             "/controller",
             "--method",
@@ -115,11 +129,64 @@ pub fn ime() -> Result<Value> {
         ],
     )?;
     Ok(
-        json!({"backend":"Fcitx5 Controller1","current":current,"active_code":active,
+        json!({"backend":"Fcitx5 Controller1","current":current,"owner_unique_name":owner,
         "pinyin_available":methods.contains("'pinyin'"),
         "text_input_owner":"Wayland seat/text-input/input-method service",
         "client_preedit_verified":false}),
     )
+}
+fn tuple_string(raw: String) -> Result<String> {
+    let inner = raw
+        .trim()
+        .strip_prefix('(')
+        .and_then(|s| s.strip_suffix(')'))
+        .context("invalid D-Bus string tuple")?
+        .trim()
+        .trim_end_matches(',')
+        .trim();
+    ensure!(
+        inner.len() >= 2
+            && ((inner.starts_with('\'') && inner.ends_with('\''))
+                || (inner.starts_with('"') && inner.ends_with('"'))),
+        "expected D-Bus string result"
+    );
+    Ok(inner[1..inner.len() - 1].to_owned())
+}
+fn running_ime_owner() -> Result<String> {
+    let has = command(
+        "gdbus",
+        &[
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.NameHasOwner",
+            "org.fcitx.Fcitx5",
+        ],
+    )?;
+    ensure!(
+        has.trim() == "(true,)",
+        "Fcitx5 is not running on this session bus; start it through the session manager"
+    );
+    let owner = tuple_string(command(
+        "gdbus",
+        &[
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.GetNameOwner",
+            "org.fcitx.Fcitx5",
+        ],
+    )?)?;
+    ensure!(owner.starts_with(':'), "invalid Fcitx5 unique bus owner");
+    Ok(owner)
 }
 pub fn notification_owner() -> Result<Value> {
     let has = command(
@@ -224,6 +291,7 @@ pub fn action(name: &str, value: Option<&str>) -> Result<Value> {
                 ["pinyin", "keyboard-us"].contains(&target),
                 "unsupported input method"
             );
+            running_ime_owner()?;
             command("fcitx5-remote", &["-s", target])?;
             if target == "pinyin" {
                 command("fcitx5-remote", &["-o"])?;

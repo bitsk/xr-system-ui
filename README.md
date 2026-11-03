@@ -76,6 +76,10 @@ or recognised desktop session manager, never requests replacement, and never
 queues behind another owner. No D-Bus activation or login autostart is installed.
 
 The supervisor starts Fcitx5 on the private bus and Wayland display. Switching
+and probing require an existing D-Bus name owner; probes address its unique
+connection name and do not activate an absent IME daemon. An inactive IME
+profile therefore remains inactive when the control centre reads its state.
+Switching
 to `pinyin` and observing the method is only controller acceptance. Chinese
 preedit/candidate/commit acceptance additionally requires a real text-input
 client and the Wayland input-method path. The literal Chinese example button
