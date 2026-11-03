@@ -1,3 +1,12 @@
+xr-system-ui (0.2.1) unstable; urgency=medium
+
+  * Add installed freedesktop icons and reserve room for larger control labels.
+  * Resize and reposition the spatial keyboard while retaining logical input IDs.
+  * Widen the space key and keep the command row disjoint.
+  * Build against Spatial Kit 0.2.1 visual tokens.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 03:01:46 +0800
+
 xr-system-ui (0.2.0) unstable; urgency=medium
 
   * Separate compact control centre, keyboard and on-demand spatial panels.

@@ -134,3 +134,11 @@ provided by `libglib2.0-bin`, `pulseaudio-utils`, `network-manager`, and `fcitx5
 `fcitx5-chinese-addons` provides pinyin. Missing services remain visible as
 unavailable. Nothing modifies global input, logs into the original desktop,
 starts system services, or takes ownership of headset hardware.
+
+The control scene uses freedesktop icon IDs present in the target theme and
+reserves a 44-pixel volume interaction band, a wider mute button and 44-pixel
+bottom actions for larger semibold labels. Typography, capsule rendering and
+corner tokens remain owned by Shell and Spatial Kit. Keyboard logical size stays
+1000 by 280 with unchanged key actions and `keyboard.key` styles; its physical
+size is 1.053 by 0.29484 metres at (0, 0.54, -1.27), pitched 16.5 degrees. The
+space key spans 442 logical pixels, equal to five letter keys plus their gaps.

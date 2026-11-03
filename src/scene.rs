@@ -77,8 +77,19 @@ fn button(
     action: &str,
     enabled: bool,
 ) {
+    let icon = match id {
+        "keyboard-toggle" | "ime-us" | "keyboard-ime-us" => "input-keyboard",
+        "notifications-toggle" => "preferences-system-notifications",
+        "clipboard-toggle" => "edit-paste",
+        "details-toggle" => "document-properties",
+        "applications" => "applications-system",
+        "refresh" => "view-refresh",
+        "ime-pinyin" | "keyboard-ime-pinyin" | "chinese" => "accessories-character-map",
+        _ => "",
+    };
     s.push(
         Widget::button(id, rect, label, action, "button.secondary")
+            .with_icon(icon)
             .parent(parent)
             .enabled(enabled),
     );
@@ -217,6 +228,7 @@ fn control(s: &mut Scene, state: &Value) {
                 "button.secondary"
             },
         )
+        .with_icon("weather-clear")
         .parent("panel")
         .enabled(available(state, "theme")),
     );
@@ -232,6 +244,7 @@ fn control(s: &mut Scene, state: &Value) {
                 "button.secondary"
             },
         )
+        .with_icon("weather-clear-night")
         .parent("panel")
         .enabled(available(state, "theme")),
     );
@@ -261,7 +274,7 @@ fn control(s: &mut Scene, state: &Value) {
     s.push(
         Widget::slider(
             "volume",
-            [28., 276., 402., 36.],
+            [28., 272., 376., 44.],
             percent as f32,
             0.,
             100.,
@@ -271,14 +284,21 @@ fn control(s: &mut Scene, state: &Value) {
         .parent("panel")
         .enabled(available(state, "volume")),
     );
-    button(
-        s,
-        "panel",
-        "mute",
-        [452., 266., 120., 54.],
-        if muted { "取消静音" } else { "静音" },
-        "mute-toggle",
-        available(state, "volume"),
+    s.push(
+        Widget::button(
+            "mute",
+            [428., 266., 144., 56.],
+            if muted { "取消静音" } else { "静音" },
+            "mute-toggle",
+            "button.secondary",
+        )
+        .with_icon(if muted {
+            "audio-volume-muted"
+        } else {
+            "audio-volume-high"
+        })
+        .parent("panel")
+        .enabled(available(state, "volume")),
     );
     text(
         s,
@@ -316,7 +336,7 @@ fn control(s: &mut Scene, state: &Value) {
         s,
         "panel",
         "details-toggle",
-        [28., 650., 264., 32.],
+        [28., 638., 264., 44.],
         "系统详情",
         "ui:details",
         true,
@@ -325,7 +345,7 @@ fn control(s: &mut Scene, state: &Value) {
         s,
         "panel",
         "applications",
-        [308., 650., 264., 32.],
+        [308., 638., 264., 44.],
         "应用库",
         "launcher-toggle",
         true,
@@ -496,9 +516,9 @@ fn keyboard(s: &mut Scene, state: &Value) {
         s,
         "keyboard-panel",
         [1000., 280.],
-        [1.35, 0.378],
-        [0., 0.60, -1.35],
-        [25., 0., 0.],
+        [1.053, 0.29484],
+        [0., 0.54, -1.27],
+        [16.5, 0., 0.],
     );
     text(
         s,
@@ -554,10 +574,10 @@ fn keyboard(s: &mut Scene, state: &Value) {
         }
     }
     for (id, x, w, label, action) in [
-        ("keyboard-copy", 50., 160., "复制", "shortcut:copy"),
-        ("keyboard-space", 220., 380., "空格", "key:57"),
-        ("keyboard-backspace", 610., 160., "退格", "key:14"),
-        ("keyboard-enter", 780., 170., "回车", "key:28"),
+        ("keyboard-copy", 50., 136., "复制", "shortcut:copy"),
+        ("keyboard-space", 194., 442., "空格", "key:57"),
+        ("keyboard-backspace", 644., 142., "退格", "key:14"),
+        ("keyboard-enter", 794., 156., "回车", "key:28"),
     ] {
         s.push(Widget::button(id, [x, 222., w, 40.], label, action, "keyboard.key").parent(&p));
     }
