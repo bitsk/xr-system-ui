@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::notifications::Notice;
 use serde_json::Value;
-use xr_spatial_kit::{Scene, Widget};
+use xr_spatial_kit::{Scene, Widget, taskbar};
 
 #[derive(Clone, Debug)]
 pub struct Panels {
@@ -166,6 +166,7 @@ pub fn build(
         "world_locked",
     )
     .with_rotation([0., -18., 0.]);
+    status_island(&mut s, state);
     if panels.control {
         s.push(Widget::card(
             "panel",
@@ -188,6 +189,130 @@ pub fn build(
         clipboard_panel(&mut s, clipboard);
     }
     s
+}
+fn status_island(s: &mut Scene, state: &Value) {
+    let island = "status-island";
+    let mut group = Widget::spatial_group(
+        island,
+        taskbar::SIDE_LOGICAL,
+        taskbar::SIDE_SIZE,
+        taskbar::RIGHT_POSITION,
+    )
+    .with_rotation(taskbar::ROTATION);
+    group.style_id = "dock.background".into();
+    s.push(group);
+    let parent = "status-island-background";
+    s.push(
+        Widget::card(
+            parent,
+            [0., 0., taskbar::SIDE_LOGICAL[0], taskbar::LOGICAL_HEIGHT],
+            "dock.background",
+        )
+        .parent(island),
+    );
+    let devices = state["network"]["state"]["devices"].as_array();
+    let connected_kind = devices
+        .and_then(|devices| {
+            devices.iter().find(|d| {
+                d["state"]
+                    .as_str()
+                    .is_some_and(|v| v.starts_with("connected"))
+                    && d["kind"] != "loopback"
+            })
+        })
+        .and_then(|d| d["kind"].as_str());
+    let network_icon = match connected_kind {
+        Some("wifi") => "network-wireless-symbolic",
+        Some("ethernet") => "network-wired-symbolic",
+        Some(_) => "network-transmit-receive-symbolic",
+        None => "network-offline-symbolic",
+    };
+    s.push(
+        Widget::button(
+            "status-network",
+            [18., 12., 44., 48.],
+            "",
+            "ui:control",
+            "dock.status-icon",
+        )
+        .with_icon(network_icon)
+        .parent(parent),
+    );
+    for (id, x) in [
+        ("status-network-separator", 78.),
+        ("status-volume-separator", 150.),
+    ] {
+        s.push(Widget::card(id, [x, 20., 1., 32.], "taskbar.separator").parent(parent));
+    }
+    let mute = state["volume"]["state"]["muted"].as_bool();
+    s.push(
+        Widget::button(
+            "status-volume",
+            [90., 12., 44., 48.],
+            "",
+            "mute-toggle",
+            "dock.status-icon",
+        )
+        .with_icon(if mute == Some(true) {
+            "audio-volume-muted-symbolic"
+        } else {
+            "audio-volume-high-symbolic"
+        })
+        .enabled(available(state, "volume") && mute.is_some())
+        .parent(parent),
+    );
+    let percent = state["battery"]["state"]["percent"]
+        .as_f64()
+        .filter(|n| available(state, "battery") && n.is_finite() && *n >= 0. && *n <= 100.);
+    let charging = field(state, "battery", "status") == "Charging";
+    let icon = match percent {
+        None => "battery-missing-symbolic",
+        Some(_) if charging => "battery-good-charging-symbolic",
+        Some(p) if p <= 15. => "battery-caution-symbolic",
+        Some(_) => "battery-good-symbolic",
+    };
+    s.push(
+        Widget::icon(
+            "status-battery",
+            [166., 20., 32., 32.],
+            icon,
+            "dock.status-icon",
+        )
+        .parent(parent),
+    );
+    let label = percent
+        .map(|p| format!("{p:.0}%"))
+        .unwrap_or_else(|| "--".into());
+    s.push(
+        Widget::text(
+            "status-battery-percent",
+            [206., 20., 70., 32.],
+            &label,
+            "taskbar.status",
+        )
+        .parent(parent),
+    );
+    s.push(
+        Widget::button(
+            "system",
+            [290., 12., 52., 48.],
+            "",
+            "ui:control",
+            "dock.status-icon",
+        )
+        .with_icon("preferences-system-symbolic")
+        .parent(parent),
+    );
+    if state["notifications"]["count"].as_u64().unwrap_or(0) > 0 {
+        s.push(
+            Widget::card(
+                "status-notification-dot",
+                [56., 14., 6., 6.],
+                "taskbar.running",
+            )
+            .parent(parent),
+        );
+    }
 }
 fn control(s: &mut Scene, state: &Value) {
     text(

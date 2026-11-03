@@ -20,8 +20,9 @@ use distinct absolute STAGE panel transforms, rather than a tall debug sheet.
 
 | Panel | Logical pixels | Physical metres | STAGE centre | Rotation `[pitch,yaw,roll]` |
 | --- | --- | --- | --- | --- |
+| Right status island | 360 × 72 | .576 × .1152 | `[.8672,.86,-1.72]` | `[12,0,0]` |
 | Control centre | 600 × 700 | .60 × .70 | `[1.18,1.60,-1.74]` | `[0,-18,0]` |
-| Keyboard | 1000 × 280 | 1.35 × .378 | `[0,.60,-1.35]` | `[25,0,0]` |
+| Keyboard | 1000 × 280 | 1.053 × .29484 | `[0,.54,-1.27]` | `[16.5,0,0]` |
 | Notifications | 600 × 340 | .60 × .34 | `[0,2.38,-1.78]` | `[0,0,0]` |
 | Clipboard | 600 × 300 | .60 × .30 | `[-1.18,1.60,-1.74]` | `[0,18,0]` |
 
@@ -32,12 +33,33 @@ centre, using actual projected bounds. Source coordinates alone do not establish
 that measurement. Shell owns independent GPU quads, local button depth and
 matching 3D hit transforms.
 
-Spatial glass always uses Kit's dark material: panel RGBA `(22,26,35,.78)`,
-primary `#F2F6FC`, secondary `#94A3B8`, accent `#3790FA`; ordinary buttons use
-white at 12% and hover at 24%, keyboard keycaps white at 15% with white labels.
-The appearance buttons change the actual OS/application theme; they do not make
-spatial glass light. Unavailable audio and absent Wi-Fi remain truthful states,
-with diagnostics in details rather than invented device readings.
+Materials and text use Spatial Kit's Qingkong light reference: mist-silver
+panels and ink-blue foreground, with no component-local colour overrides. Shell
+owns the actual material textures, icon tint and capsule/slider rendering. OS
+appearance controls still change the application theme through the real adapter.
+Unavailable services remain unavailable rather than producing synthetic states.
+
+The right status island is always present, including when `control=false`.
+Its shared Kit transform keeps a 52-logical-pixel / .0832 m open gap from the
+centre taskbar. `status-network` and the compatible `system` settings button
+both toggle the existing control panel (`ui:control`). `status-volume` sends
+`mute-toggle` only when a real mute boolean is known. Battery icon/percentage
+are read-only; unknown percentage displays `--`. Symbolic icon IDs and semantic
+styles inherit the reference colour rather than forcing white. A pending
+notification adds one blue dot, not a multiline status label.
+
+`battery.state` reads `/sys/class/power_supply`: `type=Battery`, explicit
+`present=0` and `scope=Device` are excluded. If a driver omits `present`, the
+field remains null in telemetry. One battery uses its reported 0..100 capacity,
+with an energy ratio only if capacity is unavailable. Multiple batteries are
+aggregated only when every pack has comparable `energy_now`/`energy_full` data;
+otherwise aggregate percent is null while per-pack readings remain available.
+Charge and energy units are never mixed and pack percentages are not averaged.
+`aggregation`, `percent_known`, `status`, `present_count` and `batteries` make
+that boundary explicit. No power-policy attributes are written and no new
+polling service is created: the existing system worker reads these attributes.
+See the [Linux power_supply class](https://www.kernel.org/doc/html/latest/power/power_supply_class.html)
+for the units and optional-attribute contract.
 
 Shell `ComponentCommand` supports `control`, `keyboard`, and `notifications`
 with `toggle`, `show`, and `hide`. The control centre's application button sends

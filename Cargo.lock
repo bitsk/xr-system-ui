@@ -735,7 +735,7 @@ dependencies = [
 
 [[package]]
 name = "xr-spatial-kit"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "serde",
@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "xr-system-ui"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "ctrlc",

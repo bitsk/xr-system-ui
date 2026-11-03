@@ -94,6 +94,118 @@ pub fn network() -> Result<Value> {
         "devices":devices,"wifi_device_available":has_wifi,"control":"status_only"}),
     )
 }
+#[derive(serde::Serialize)]
+struct BatteryReading {
+    name: String,
+    present: Option<bool>,
+    capacity_percent: Option<f64>,
+    status: String,
+    energy_now_uwh: Option<f64>,
+    energy_full_uwh: Option<f64>,
+}
+fn supply_text(path: &std::path::Path, attribute: &str) -> Option<String> {
+    std::fs::read_to_string(path.join(attribute))
+        .ok()
+        .map(|s| s.trim().to_owned())
+}
+fn supply_number(path: &std::path::Path, attribute: &str) -> Option<f64> {
+    supply_text(path, attribute)?
+        .parse::<f64>()
+        .ok()
+        .filter(|n| n.is_finite() && *n >= 0.)
+}
+fn energy_percent(now: f64, full: f64) -> Option<f64> {
+    if !now.is_finite() || !full.is_finite() || full <= 0. {
+        return None;
+    }
+    let percent = now / full * 100.;
+    percent.is_finite().then(|| percent.clamp(0., 100.))
+}
+/// Read Linux power_supply attributes only; never write charging policy or
+/// combine unlike charge/energy units or assume equally sized battery packs.
+pub fn battery() -> Result<Value> {
+    let root = std::path::Path::new("/sys/class/power_supply");
+    let mut batteries = Vec::new();
+    for entry in std::fs::read_dir(root).context("read power_supply class")? {
+        let path = entry?.path();
+        if supply_text(&path, "type").as_deref() != Some("Battery")
+            || supply_text(&path, "scope").as_deref() == Some("Device")
+        {
+            continue;
+        }
+        let present = match supply_text(&path, "present").as_deref() {
+            Some("0") => Some(false),
+            Some("1") => Some(true),
+            _ => None,
+        };
+        if present == Some(false) {
+            continue;
+        }
+        batteries.push(BatteryReading {
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            present,
+            capacity_percent: supply_number(&path, "capacity").filter(|n| *n <= 100.),
+            status: supply_text(&path, "status").unwrap_or_else(|| "Unknown".into()),
+            energy_now_uwh: supply_number(&path, "energy_now"),
+            energy_full_uwh: supply_number(&path, "energy_full").filter(|n| *n > 0.),
+        });
+    }
+    ensure!(
+        !batteries.is_empty(),
+        "no present system battery reported by power_supply"
+    );
+    batteries.sort_by(|a, b| a.name.cmp(&b.name));
+    let (percent, aggregation) = if batteries.len() == 1 {
+        let b = &batteries[0];
+        if let Some(capacity) = b.capacity_percent {
+            (Some(capacity), "reported_capacity")
+        } else {
+            (
+                b.energy_now_uwh
+                    .zip(b.energy_full_uwh)
+                    .and_then(|(n, f)| energy_percent(n, f)),
+                "energy_ratio",
+            )
+        }
+    } else if batteries
+        .iter()
+        .all(|b| b.energy_now_uwh.is_some() && b.energy_full_uwh.is_some())
+    {
+        let now: f64 = batteries.iter().filter_map(|b| b.energy_now_uwh).sum();
+        let full: f64 = batteries.iter().filter_map(|b| b.energy_full_uwh).sum();
+        (energy_percent(now, full), "energy_totals")
+    } else {
+        (None, "unavailable_without_comparable_energy")
+    };
+    let charging = batteries.iter().any(|b| b.status == "Charging");
+    let discharging = batteries.iter().any(|b| b.status == "Discharging");
+    let known = batteries
+        .iter()
+        .all(|b| ["Charging", "Discharging", "Full", "Not charging"].contains(&b.status.as_str()));
+    let status = if !known {
+        "Unknown"
+    } else if charging && discharging {
+        "Mixed"
+    } else if charging {
+        "Charging"
+    } else if discharging {
+        "Discharging"
+    } else if batteries.iter().all(|b| b.status == "Full") {
+        "Full"
+    } else {
+        "Not charging"
+    };
+    Ok(
+        json!({"backend":"Linux power_supply sysfs (read only)","percent":percent,
+        "percent_known":percent.is_some(),"status":status,"aggregation":aggregation,
+        "present_count":batteries.len(),"batteries":batteries}),
+    )
+}
+
 pub fn ime() -> Result<Value> {
     let owner = running_ime_owner()?;
     // Use the unique connection name, so a daemon exiting between NameHasOwner
@@ -225,7 +337,7 @@ pub fn notification_owner() -> Result<Value> {
 }
 pub fn probe() -> Value {
     json!({"theme":capability(theme()),"volume":capability(volume()),
-        "network":capability(network()),"ime":capability(ime()),
+        "network":capability(network()),"battery":capability(battery()),"ime":capability(ime()),
         "notifications":capability(notification_owner()),
         "clipboard":{"available":false,"reason":"requires connected private Shell/Wayland selection bridge"},
         "workspace":{"available":false,"reason":"requires Shell snapshot"}})

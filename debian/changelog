@@ -1,3 +1,11 @@
+xr-system-ui (0.2.2) unstable; urgency=medium
+
+  * Add the permanent right taskbar island using shared Kit geometry.
+  * Read real system-battery capacity and status without changing power policy.
+  * Preserve independent control/keyboard panels and use symbolic theme icons.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 04:21:31 +0800
+
 xr-system-ui (0.2.1) unstable; urgency=medium
 
   * Add installed freedesktop icons and reserve room for larger control labels.
