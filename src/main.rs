@@ -325,6 +325,7 @@ async fn scene_loop(
 ) -> Result<()> {
     let mut client = connect(o)?;
     client.send("GetSnapshot", json!({}), &[])?;
+    client.send("GetClipboard", json!({}), &[])?;
     let start = Instant::now();
     let mut state = json!({});
     let mut active_workspace = None;
@@ -443,17 +444,22 @@ async fn scene_loop(
                         active_workspace = new;
                         scene_dirty = true;
                     }
-                    if let Some(text) = payload["clipboard"]["text"].as_str() {
-                        if clipboard.as_deref() != Some(text) {
-                            clipboard = Some(text.into());
-                            scene_dirty = true;
-                        }
-                    }
+                    // Snapshot clipboard is bounded preview metadata. Only
+                    // ClipboardChanged carries an authoritative full selection.
                 }
                 "ClipboardChanged" => {
                     clipboard = payload["text"].as_str().map(str::to_owned);
-                    last_result = "已收到真实Wayland剪贴板更新".into();
+                    last_result = if clipboard.is_some() {
+                        "已收到真实Wayland剪贴板更新"
+                    } else {
+                        "当前隔离剪贴板为空"
+                    }
+                    .into();
                     scene_dirty = true;
+                }
+                "SessionEnding" => {
+                    println!("XR_SYSTEM_UI_SESSION_ENDING={payload}");
+                    break;
                 }
                 "InputAccepted" | "WorkspaceApplied" | "IntentAccepted" => {
                     let id = m["request_id"].as_str().unwrap_or("");

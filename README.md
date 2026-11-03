@@ -62,6 +62,10 @@ scene connection and release its owned notification name. `probe` never claims
 a D-Bus name and never changes settings. Actions require the same private user,
 bus and runtime environment as the selected development session. Successful
 actions include readback; a missing endpoint or focus returns an error.
+The scene client requests the full initial selection with `GetClipboard` and
+stores full text only from `ClipboardChanged`; snapshot previews are never
+treated as pasteable text. Shell's `SessionEnding` message is a normal exit;
+an unannounced transport disconnect remains an error.
 
 The session supervisor must establish its own user/session bus, configuration
 directory, audio endpoint and Wayland display. A private audio stack can use
