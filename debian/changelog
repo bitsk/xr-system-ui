@@ -1,0 +1,6 @@
+xr-system-ui (0.1.0) unstable; urgency=medium
+
+  * Add independent control centre, notification and keyboard scene client.
+  * Add service capability probing, bounded actions and actual readback.
+
+ -- bits <bigbits@hackx.cc>  Tue, 03 Nov 2026 23:49:34 +0800
