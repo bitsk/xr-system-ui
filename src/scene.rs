@@ -307,5 +307,11 @@ pub fn build(
             "button.secondary",
         ));
     }
+    // Paint the background before every control independent of sibling ID order.
+    for widget in &mut s.widgets {
+        if widget.id != "panel" {
+            widget.parent_id = "panel".into();
+        }
+    }
     s
 }
