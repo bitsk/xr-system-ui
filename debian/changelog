@@ -1,3 +1,11 @@
+xr-system-ui (0.2.0) unstable; urgency=medium
+
+  * Separate compact control centre, keyboard and on-demand spatial panels.
+  * Adopt fixed dark UKUI glass tokens and independent world transforms.
+  * Add component visibility commands and real clipboard copy/paste shortcuts.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 00:44:43 +0800
+
 xr-system-ui (0.1.4) unstable; urgency=medium
 
   * Query the full initial selection with GetClipboard, never from previews.

@@ -9,6 +9,44 @@ Widget actions use Kit interaction state: a button requires a matching captured
 press/release inside its bounds, cancellation clears the gesture, and a slider
 commits one final captured value rather than queuing OS writes on every drag.
 
+## Spatial layout
+
+The control centre is a compact independent panel. Its default page contains
+application appearance, volume, actual network status and tool toggles. Detailed
+IME/workspace state and operation results live on the optional details page.
+Notifications, clipboard and keyboard open independently on demand; the keyboard
+is hidden initially. They remain in the same independent component process and
+use distinct absolute STAGE panel transforms, rather than a tall debug sheet.
+
+| Panel | Logical pixels | Physical metres | STAGE centre | Rotation `[pitch,yaw,roll]` |
+| --- | --- | --- | --- | --- |
+| Control centre | 600 × 700 | .60 × .70 | `[1.18,1.60,-1.74]` | `[0,-18,0]` |
+| Keyboard | 1000 × 280 | 1.35 × .378 | `[0,.60,-1.35]` | `[25,0,0]` |
+| Notifications | 600 × 340 | .60 × .34 | `[0,2.38,-1.78]` | `[0,0,0]` |
+| Clipboard | 600 × 300 | .60 × .30 | `[-1.18,1.60,-1.74]` | `[0,18,0]` |
+
+Positive pitch means the keyboard faces upward in the Shell UI convention.
+Against the main application baseline `[0,1.60,-1.80]`, final visual acceptance
+must verify at least 32 logical pixels / .064 m of separation from the control
+centre, using actual projected bounds. Source coordinates alone do not establish
+that measurement. Shell owns independent GPU quads, local button depth and
+matching 3D hit transforms.
+
+Spatial glass always uses Kit's dark material: panel RGBA `(22,26,35,.78)`,
+primary `#F2F6FC`, secondary `#94A3B8`, accent `#3790FA`; ordinary buttons use
+white at 12% and hover at 24%, keyboard keycaps white at 15% with white labels.
+The appearance buttons change the actual OS/application theme; they do not make
+spatial glass light. Unavailable audio and absent Wi-Fi remain truthful states,
+with diagnostics in details rather than invented device readings.
+
+Shell `ComponentCommand` supports `control`, `keyboard`, and `notifications`
+with `toggle`, `show`, and `hide`. The control centre's application button sends
+`ComponentIntent` for Dock's launcher. Its own tool buttons open the independent
+panels; copy/paste shortcuts send actual evdev Ctrl+C/V into the acknowledged
+application focus. Explicit Unicode commits remain separate from IME preedit.
+These visual changes retain every M2–M4 functionality and acceptance gate;
+builds remain distinct from final rendered/input/OS acceptance.
+
 Implemented adapters query actual services and report unavailable capabilities:
 
 | Feature | Interface and acceptance boundary |

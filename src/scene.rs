@@ -3,20 +3,141 @@ use crate::notifications::Notice;
 use serde_json::Value;
 use xr_spatial_kit::{Scene, Widget};
 
+#[derive(Clone, Debug)]
+pub struct Panels {
+    pub control: bool,
+    pub keyboard: bool,
+    pub notifications: bool,
+    pub clipboard: bool,
+    pub details: bool,
+}
+impl Default for Panels {
+    fn default() -> Self {
+        Self {
+            control: true,
+            keyboard: false,
+            notifications: false,
+            clipboard: false,
+            details: false,
+        }
+    }
+}
+impl Panels {
+    pub fn command(&mut self, panel: &str, intent: &str) -> bool {
+        let value = match panel {
+            "control" => &mut self.control,
+            "keyboard" => &mut self.keyboard,
+            "notifications" => &mut self.notifications,
+            "clipboard" => &mut self.clipboard,
+            "details" => &mut self.details,
+            _ => return false,
+        };
+        *value = match intent {
+            "show" => true,
+            "hide" => false,
+            "toggle" => !*value,
+            _ => return false,
+        };
+        if panel == "control" && self.control {
+            self.details = false;
+        }
+        true
+    }
+}
 fn available(state: &Value, key: &str) -> bool {
     state[key]["available"].as_bool() == Some(true)
 }
-fn label(state: &Value, key: &str, field: &str) -> String {
-    if !available(state, key) {
-        return "不可用".into();
-    }
-    let v = &state[key]["state"][field];
-    v.as_str()
-        .map(str::to_owned)
-        .unwrap_or_else(|| v.to_string())
+fn field<'a>(state: &'a Value, key: &str, name: &str) -> &'a str {
+    state[key]["state"][name].as_str().unwrap_or("")
 }
 fn short(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
+}
+fn text(s: &mut Scene, parent: &str, id: &str, rect: [f32; 4], value: &str, secondary: bool) {
+    s.push(
+        Widget::text(
+            id,
+            rect,
+            value,
+            if secondary {
+                "text.secondary"
+            } else {
+                "text.primary"
+            },
+        )
+        .parent(parent),
+    );
+}
+fn button(
+    s: &mut Scene,
+    parent: &str,
+    id: &str,
+    rect: [f32; 4],
+    label: &str,
+    action: &str,
+    enabled: bool,
+) {
+    s.push(
+        Widget::button(id, rect, label, action, "button.secondary")
+            .parent(parent)
+            .enabled(enabled),
+    );
+}
+fn spatial(
+    s: &mut Scene,
+    id: &str,
+    logical: [f32; 2],
+    size: [f32; 2],
+    position: [f32; 3],
+    rotation: [f32; 3],
+) -> String {
+    let mut group = Widget::spatial_group(id, logical, size, position).with_rotation(rotation);
+    group.style_id = "panel.background".into();
+    s.push(group);
+    let background = format!("{id}-background");
+    s.push(
+        Widget::card(
+            &background,
+            [0., 0., logical[0], logical[1]],
+            "panel.background",
+        )
+        .parent(id),
+    );
+    background
+}
+fn network_label(state: &Value) -> String {
+    if !available(state, "network") {
+        return "网络状态待连接".into();
+    }
+    let connection_state = field(state, "network", "state");
+    let connected = connection_state.starts_with("connected");
+    let devices = state["network"]["state"]["devices"].as_array();
+    let kind = devices
+        .and_then(|d| {
+            d.iter().find(|d| {
+                d["state"]
+                    .as_str()
+                    .is_some_and(|s| s.starts_with("connected"))
+                    && d["kind"] != "loopback"
+            })
+        })
+        .and_then(|d| d["kind"].as_str())
+        .unwrap_or("");
+    format!(
+        "{} · {}",
+        match kind {
+            "ethernet" => "以太网",
+            "wifi" => "无线网络",
+            _ => "网络",
+        },
+        if connected {
+            "已连接"
+        } else if connection_state == "connecting" {
+            "正在连接"
+        } else {
+            "未连接"
+        }
+    )
 }
 
 pub fn build(
@@ -25,293 +146,578 @@ pub fn build(
     active_workspace: Option<u64>,
     clipboard: Option<&str>,
     last_result: &str,
+    panels: &Panels,
 ) -> Scene {
     let mut s = Scene::new(
-        [720.0, 1120.0],
-        [0.72, 1.12],
-        [0.95, 1.45, -1.65],
+        [600., 700.],
+        [0.60, 0.70],
+        [1.18, 1.6, -1.74],
         "world_locked",
-    );
-    s.push(Widget::card(
+    )
+    .with_rotation([0., -18., 0.]);
+    if panels.control {
+        s.push(Widget::card(
+            "panel",
+            [0., 0., 600., 700.],
+            "panel.background",
+        ));
+        if panels.details {
+            details(&mut s, state, active_workspace, last_result);
+        } else {
+            control(&mut s, state);
+        }
+    }
+    if panels.keyboard {
+        keyboard(&mut s, state);
+    }
+    if panels.notifications {
+        notifications(&mut s, state, notices);
+    }
+    if panels.clipboard {
+        clipboard_panel(&mut s, clipboard);
+    }
+    s
+}
+fn control(s: &mut Scene, state: &Value) {
+    text(
+        s,
         "panel",
-        [0.0, 0.0, 720.0, 1120.0],
-        "panel.background",
-    ));
-    s.push(Widget::text(
         "title",
-        [20.0, 16.0, 680.0, 36.0],
-        "UKUI XR · 空间控制中心",
-        "text.primary",
-    ));
-    s.push(Widget::text(
-        "theme-status",
-        [20.0, 62.0, 680.0, 32.0],
-        &format!(
-            "主题 {} · 字体 {}",
-            label(state, "theme", "name"),
-            label(state, "theme", "font")
-        ),
-        "text.secondary",
-    ));
+        [28., 22., 430., 38.],
+        "控制中心",
+        false,
+    );
+    button(
+        s,
+        "panel",
+        "control-close",
+        [516., 20., 56., 44.],
+        "×",
+        "ui:control",
+        true,
+    );
+    text(
+        s,
+        "panel",
+        "theme-title",
+        [28., 88., 400., 30.],
+        "应用外观",
+        false,
+    );
+    let theme = field(state, "theme", "name");
     s.push(
         Widget::button(
             "theme-light",
-            [20.0, 104.0, 200.0, 40.0],
-            "浅色主题",
+            [28., 130., 264., 54.],
+            "浅色",
             "theme:ukui-light",
-            "button.secondary",
+            if theme == "ukui-light" {
+                "button.primary"
+            } else {
+                "button.secondary"
+            },
         )
+        .parent("panel")
         .enabled(available(state, "theme")),
     );
     s.push(
         Widget::button(
             "theme-dark",
-            [232.0, 104.0, 200.0, 40.0],
-            "深色主题",
+            [308., 130., 264., 54.],
+            "深色",
             "theme:ukui-dark",
-            "button.secondary",
-        )
-        .enabled(available(state, "theme")),
-    );
-    let percent = state["volume"]["state"]["percent"].as_f64().unwrap_or(0.0);
-    let virtual_suffix = if state["volume"]["state"]["virtual_sink"] == true {
-        " · 虚拟输出"
-    } else {
-        ""
-    };
-    let volume_text = if available(state, "volume") {
-        format!("音量 {:.0}%{}", percent, virtual_suffix)
-    } else {
-        "音频端点不可用".into()
-    };
-    s.push(Widget::text(
-        "volume-status",
-        [20.0, 158.0, 680.0, 30.0],
-        &volume_text,
-        "text.primary",
-    ));
-    s.push(
-        Widget::slider(
-            "volume",
-            [20.0, 202.0, 430.0, 30.0],
-            percent as f32,
-            0.0,
-            100.0,
-            "volume",
-            "slider.primary",
-        )
-        .enabled(available(state, "volume")),
-    );
-    let muted = state["volume"]["state"]["muted"].as_bool().unwrap_or(false);
-    s.push(
-        Widget::button(
-            "mute",
-            [474.0, 194.0, 210.0, 40.0],
-            if muted { "取消静音" } else { "静音" },
-            "mute-toggle",
-            "button.secondary",
-        )
-        .enabled(available(state, "volume")),
-    );
-    let wifi = if state["network"]["state"]["wifi_device_available"] == true {
-        "Wi-Fi可用"
-    } else {
-        "无Wi-Fi设备"
-    };
-    s.push(Widget::text(
-        "network-status",
-        [20.0, 248.0, 680.0, 32.0],
-        &format!(
-            "网络 {} / {} · {}",
-            label(state, "network", "state"),
-            label(state, "network", "connectivity"),
-            wifi
-        ),
-        "text.primary",
-    ));
-    s.push(Widget::button(
-        "refresh",
-        [20.0, 290.0, 180.0, 40.0],
-        "刷新真实状态",
-        "refresh",
-        "button.secondary",
-    ));
-    s.push(Widget::text(
-        "workspace-title",
-        [20.0, 342.0, 680.0, 30.0],
-        &format!(
-            "空间工作区 · 当前 {}",
-            active_workspace
-                .map(|x| (x + 1).to_string())
-                .unwrap_or_else(|| "未确认".into())
-        ),
-        "text.primary",
-    ));
-    for n in 0..4 {
-        s.push(Widget::button(
-            &format!("workspace-{n}"),
-            [20.0 + n as f32 * 172.0, 382.0, 160.0, 40.0],
-            &format!("工作区 {}", n + 1),
-            &format!("workspace:{n}"),
-            if active_workspace == Some(n) {
+            if theme == "ukui-dark" {
                 "button.primary"
             } else {
                 "button.secondary"
             },
-        ));
+        )
+        .parent("panel")
+        .enabled(available(state, "theme")),
+    );
+    text(
+        s,
+        "panel",
+        "audio-title",
+        [28., 220., 300., 30.],
+        "声音",
+        false,
+    );
+    let percent = state["volume"]["state"]["percent"].as_f64().unwrap_or(0.);
+    let muted = state["volume"]["state"]["muted"].as_bool().unwrap_or(false);
+    let volume = if available(state, "volume") {
+        format!("{percent:.0}%")
+    } else {
+        "未连接输出".into()
+    };
+    text(
+        s,
+        "panel",
+        "volume-status",
+        [376., 220., 196., 30.],
+        &volume,
+        true,
+    );
+    s.push(
+        Widget::slider(
+            "volume",
+            [28., 276., 402., 36.],
+            percent as f32,
+            0.,
+            100.,
+            "volume",
+            "slider.primary",
+        )
+        .parent("panel")
+        .enabled(available(state, "volume")),
+    );
+    button(
+        s,
+        "panel",
+        "mute",
+        [452., 266., 120., 54.],
+        if muted { "取消静音" } else { "静音" },
+        "mute-toggle",
+        available(state, "volume"),
+    );
+    text(
+        s,
+        "panel",
+        "network-title",
+        [28., 362., 400., 30.],
+        "网络",
+        false,
+    );
+    s.push(Widget::card("network-card", [28., 406., 544., 86.], "panel.card").parent("panel"));
+    text(
+        s,
+        "network-card",
+        "network-status",
+        [20., 22., 440., 34.],
+        &network_label(state),
+        false,
+    );
+    text(
+        s,
+        "panel",
+        "tools-title",
+        [28., 530., 400., 30.],
+        "快捷工具",
+        false,
+    );
+    for (id, x, label, action) in [
+        ("keyboard-toggle", 28., "键盘", "ui:keyboard"),
+        ("notifications-toggle", 214., "通知", "ui:notifications"),
+        ("clipboard-toggle", 400., "剪贴板", "ui:clipboard"),
+    ] {
+        button(s, "panel", id, [x, 574., 172., 52.], label, action, true);
     }
-    s.push(Widget::text(
-        "clipboard-status",
-        [20.0, 438.0, 680.0, 30.0],
-        &format!(
-            "隔离剪贴板：{}",
-            clipboard
-                .map(|s| short(s, 30))
-                .unwrap_or_else(|| "等待Wayland selection".into())
-        ),
-        "text.primary",
-    ));
-    s.push(Widget::button(
-        "clipboard-copy",
-        [20.0, 478.0, 250.0, 40.0],
-        "复制 XR 测试文本",
-        "clipboard-copy",
-        "button.secondary",
-    ));
-    s.push(
-        Widget::button(
-            "clipboard-paste",
-            [284.0, 478.0, 250.0, 40.0],
-            "粘贴到当前窗口",
-            "clipboard-paste",
-            "button.secondary",
-        )
-        .enabled(clipboard.is_some()),
+    button(
+        s,
+        "panel",
+        "details-toggle",
+        [28., 650., 264., 32.],
+        "系统详情",
+        "ui:details",
+        true,
     );
-    s.push(Widget::text(
+    button(
+        s,
+        "panel",
+        "applications",
+        [308., 650., 264., 32.],
+        "应用库",
+        "launcher-toggle",
+        true,
+    );
+}
+fn details(s: &mut Scene, state: &Value, active_workspace: Option<u64>, last_result: &str) {
+    text(
+        s,
+        "panel",
+        "details-title",
+        [28., 22., 420., 38.],
+        "系统详情",
+        false,
+    );
+    button(
+        s,
+        "panel",
+        "details-back",
+        [452., 20., 120., 44.],
+        "返回",
+        "ui:details",
+        true,
+    );
+    text(
+        s,
+        "panel",
+        "workspace-title",
+        [28., 90., 544., 30.],
+        "工作区",
+        false,
+    );
+    for n in 0..4 {
+        s.push(
+            Widget::button(
+                &format!("workspace-{n}"),
+                [28. + n as f32 * 140., 132., 124., 46.],
+                &(n + 1).to_string(),
+                &format!("workspace:{n}"),
+                if active_workspace == Some(n) {
+                    "button.primary"
+                } else {
+                    "button.secondary"
+                },
+            )
+            .parent("panel"),
+        );
+    }
+    let current = field(state, "ime", "current");
+    text(
+        s,
+        "panel",
         "ime-status",
-        [20.0, 534.0, 680.0, 30.0],
+        [28., 214., 544., 30.],
         &format!(
-            "输入法 {} · 中文候选由真实IME提供",
-            label(state, "ime", "current")
+            "输入法 · {}",
+            if current.is_empty() {
+                "未启用"
+            } else {
+                current
+            }
         ),
-        "text.primary",
-    ));
-    s.push(
-        Widget::button(
-            "ime-pinyin",
-            [20.0, 574.0, 200.0, 40.0],
-            "拼音输入法",
-            "ime:pinyin",
-            "button.secondary",
-        )
-        .enabled(available(state, "ime") && state["ime"]["state"]["pinyin_available"] == true),
+        true,
     );
-    s.push(
-        Widget::button(
-            "ime-us",
-            [232.0, 574.0, 200.0, 40.0],
-            "英文键盘",
-            "ime:keyboard-us",
-            "button.secondary",
-        )
-        .enabled(available(state, "ime")),
+    button(
+        s,
+        "panel",
+        "ime-pinyin",
+        [28., 254., 264., 46.],
+        "拼音",
+        "ime:pinyin",
+        available(state, "ime") && state["ime"]["state"]["pinyin_available"] == true,
     );
-    let notification_title = if state["notifications"]["owned_in_isolated_bus"] == true {
+    button(
+        s,
+        "panel",
+        "ime-us",
+        [308., 254., 264., 46.],
+        "英文",
+        "ime:keyboard-us",
+        available(state, "ime"),
+    );
+    text(
+        s,
+        "panel",
+        "network-detail",
+        [28., 334., 544., 30.],
+        &network_label(state),
+        true,
+    );
+    text(
+        s,
+        "panel",
+        "wifi-detail",
+        [28., 372., 544., 28.],
+        if state["network"]["state"]["wifi_device_available"] == true {
+            "检测到无线设备"
+        } else {
+            "当前没有无线设备"
+        },
+        true,
+    );
+    let audio = if available(state, "volume") {
         format!(
-            "通知 · {} 条（独立 D-Bus）",
-            state["notifications"]["count"].as_u64().unwrap_or(0)
+            "音频 · {}{}",
+            short(field(state, "volume", "sink_name"), 25),
+            if state["volume"]["state"]["virtual_sink"] == true {
+                "（虚拟输出）"
+            } else {
+                ""
+            }
         )
     } else {
-        "通知 · 未启动独立通知服务".into()
+        "音频端点未连接".into()
     };
-    s.push(Widget::text(
-        "notification-title",
-        [20.0, 628.0, 680.0, 30.0],
-        &notification_title,
-        "text.primary",
-    ));
-    if let Some(notice) = notices.last() {
-        s.push(Widget::text(
-            "notice-summary",
-            [20.0, 666.0, 570.0, 30.0],
-            &short(&notice.summary, 48),
-            "text.primary",
-        ));
-        s.push(Widget::text(
-            "notice-body",
-            [20.0, 704.0, 680.0, 30.0],
-            &short(&notice.body, 60),
-            "text.secondary",
-        ));
-        s.push(Widget::button(
-            "notice-close",
-            [576.0, 662.0, 110.0, 36.0],
-            "关闭",
-            &format!("notice-close:{}", notice.id),
-            "button.secondary",
-        ));
-        if let Some(action_label) = notice.actions.get(1) {
-            s.push(Widget::button(
-                "notice-action",
-                [20.0, 744.0, 240.0, 36.0],
-                &short(action_label, 20),
-                &format!("notice-action:{}:0", notice.id),
-                "button.primary",
-            ));
-        }
+    text(
+        s,
+        "panel",
+        "audio-detail",
+        [28., 416., 544., 30.],
+        &audio,
+        true,
+    );
+    button(
+        s,
+        "panel",
+        "refresh",
+        [28., 470., 264., 46.],
+        "刷新状态",
+        "refresh",
+        true,
+    );
+    button(
+        s,
+        "panel",
+        "chinese",
+        [308., 470., 264., 46.],
+        "提交中文示例",
+        "chinese-commit",
+        true,
+    );
+    text(
+        s,
+        "panel",
+        "result-title",
+        [28., 554., 544., 28.],
+        "最近操作",
+        true,
+    );
+    for (i, line) in last_result
+        .chars()
+        .collect::<Vec<_>>()
+        .chunks(25)
+        .take(2)
+        .enumerate()
+    {
+        text(
+            s,
+            "panel",
+            &format!("result-{i}"),
+            [28., 594. + i as f32 * 34., 544., 30.],
+            &line.iter().collect::<String>(),
+            true,
+        );
     }
-    s.push(Widget::text(
-        "result",
-        [20.0, 790.0, 680.0, 32.0],
-        &short(last_result, 60),
-        "text.secondary",
-    ));
-    s.push(Widget::text(
+}
+fn keyboard(s: &mut Scene, state: &Value) {
+    let p = spatial(
+        s,
+        "keyboard-panel",
+        [1000., 280.],
+        [1.35, 0.378],
+        [0., 0.60, -1.35],
+        [25., 0., 0.],
+    );
+    text(
+        s,
+        &p,
         "keyboard-title",
-        [20.0, 830.0, 680.0, 30.0],
-        "空间键盘 · 输入发往已确认焦点窗口",
-        "text.primary",
-    ));
-    for (row, text) in ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"]
+        [22., 10., 240., 30.],
+        "空间键盘",
+        false,
+    );
+    button(
+        s,
+        &p,
+        "keyboard-ime-pinyin",
+        [654., 8., 112., 32.],
+        "拼音",
+        "ime:pinyin",
+        available(state, "ime") && state["ime"]["state"]["pinyin_available"] == true,
+    );
+    button(
+        s,
+        &p,
+        "keyboard-ime-us",
+        [776., 8., 112., 32.],
+        "EN",
+        "ime:keyboard-us",
+        available(state, "ime"),
+    );
+    button(
+        s,
+        &p,
+        "keyboard-close",
+        [930., 8., 48., 32.],
+        "×",
+        "ui:keyboard",
+        true,
+    );
+    for (row, letters) in ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"]
         .iter()
         .enumerate()
     {
-        let margin = (720.0 - text.len() as f32 * 68.0) / 2.0;
-        for (col, ch) in text.chars().enumerate() {
-            s.push(Widget::button(
-                &format!("key-{ch}"),
-                [
-                    margin + col as f32 * 68.0,
-                    870.0 + row as f32 * 42.0,
-                    62.0,
-                    36.0,
-                ],
-                &ch.to_string(),
-                &format!("key:{}", [2, 16, 30, 44][row] + col),
-                "button.secondary",
-            ));
+        let left = (1000. - letters.len() as f32 * 90.) / 2.;
+        for (col, ch) in letters.chars().enumerate() {
+            s.push(
+                Widget::button(
+                    &format!("key-{ch}"),
+                    [left + col as f32 * 90., 48. + row as f32 * 42., 82., 36.],
+                    &ch.to_ascii_uppercase().to_string(),
+                    &format!("key:{}", [2, 16, 30, 44][row] + col),
+                    "keyboard.key",
+                )
+                .parent(&p),
+            );
         }
     }
-    for (id, x, w, text, action) in [
-        ("space", 20.0, 180.0, "空格", "key:57"),
-        ("backspace", 212.0, 130.0, "退格", "key:14"),
-        ("enter", 354.0, 130.0, "回车", "key:28"),
-        ("chinese", 496.0, 204.0, "提交中文示例", "chinese-commit"),
+    for (id, x, w, label, action) in [
+        ("keyboard-copy", 50., 160., "复制", "shortcut:copy"),
+        ("keyboard-space", 220., 380., "空格", "key:57"),
+        ("keyboard-backspace", 610., 160., "退格", "key:14"),
+        ("keyboard-enter", 780., 170., "回车", "key:28"),
     ] {
-        s.push(Widget::button(
-            id,
-            [x, 1044.0, w, 40.0],
-            text,
-            action,
-            "button.secondary",
-        ));
+        s.push(Widget::button(id, [x, 222., w, 40.], label, action, "keyboard.key").parent(&p));
     }
-    // Paint the background before every control independent of sibling ID order.
-    for widget in &mut s.widgets {
-        if widget.id != "panel" {
-            widget.parent_id = "panel".into();
+}
+fn notifications(s: &mut Scene, state: &Value, notices: &[Notice]) {
+    let p = spatial(
+        s,
+        "notifications-panel",
+        [600., 340.],
+        [0.60, 0.34],
+        [0., 2.38, -1.78],
+        [0., 0., 0.],
+    );
+    text(
+        s,
+        &p,
+        "notification-title",
+        [24., 20., 450., 36.],
+        "通知",
+        false,
+    );
+    button(
+        s,
+        &p,
+        "notifications-close",
+        [520., 18., 56., 40.],
+        "×",
+        "ui:notifications",
+        true,
+    );
+    if let Some(notice) = notices.last() {
+        text(
+            s,
+            &p,
+            "notice-summary",
+            [24., 86., 552., 32.],
+            &short(&notice.summary, 25),
+            false,
+        );
+        for (i, line) in notice
+            .body
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(26)
+            .take(3)
+            .enumerate()
+        {
+            text(
+                s,
+                &p,
+                &format!("notice-body-{i}"),
+                [24., 132. + i as f32 * 34., 552., 30.],
+                &line.iter().collect::<String>(),
+                true,
+            );
         }
+        button(
+            s,
+            &p,
+            &format!("notice-close-{}", notice.id),
+            [24., 274., 264., 44.],
+            "关闭通知",
+            &format!("notice-close:{}", notice.id),
+            true,
+        );
+        if let Some(label) = notice.actions.get(1) {
+            button(
+                s,
+                &p,
+                &format!("notice-action-{}", notice.id),
+                [308., 274., 264., 44.],
+                &short(label, 12),
+                &format!("notice-action:{}:0", notice.id),
+                true,
+            );
+        }
+    } else {
+        text(
+            s,
+            &p,
+            "notice-empty",
+            [24., 118., 552., 36.],
+            if state["notifications"]["owned_in_isolated_bus"] == true {
+                "暂无通知"
+            } else {
+                "通知服务未开启"
+            },
+            true,
+        );
     }
-    s
+}
+fn clipboard_panel(s: &mut Scene, clipboard: Option<&str>) {
+    let p = spatial(
+        s,
+        "clipboard-panel",
+        [600., 300.],
+        [0.60, 0.30],
+        [-1.18, 1.6, -1.74],
+        [0., 18., 0.],
+    );
+    text(
+        s,
+        &p,
+        "clipboard-title",
+        [24., 20., 450., 36.],
+        "剪贴板",
+        false,
+    );
+    button(
+        s,
+        &p,
+        "clipboard-close",
+        [520., 18., 56., 40.],
+        "×",
+        "ui:clipboard",
+        true,
+    );
+    if let Some(value) = clipboard {
+        for (i, line) in value
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(26)
+            .take(3)
+            .enumerate()
+        {
+            text(
+                s,
+                &p,
+                &format!("clipboard-text-{i}"),
+                [24., 90. + i as f32 * 34., 552., 30.],
+                &line.iter().collect::<String>(),
+                true,
+            );
+        }
+    } else {
+        text(
+            s,
+            &p,
+            "clipboard-empty",
+            [24., 100., 552., 32.],
+            "剪贴板为空",
+            true,
+        );
+    }
+    button(
+        s,
+        &p,
+        "clipboard-copy",
+        [24., 234., 264., 44.],
+        "复制选中内容",
+        "shortcut:copy",
+        true,
+    );
+    button(
+        s,
+        &p,
+        "clipboard-paste",
+        [308., 234., 264., 44.],
+        "粘贴到窗口",
+        "shortcut:paste",
+        clipboard.is_some(),
+    );
 }

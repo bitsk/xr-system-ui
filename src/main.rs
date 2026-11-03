@@ -340,6 +340,7 @@ async fn scene_loop(
     let mut interactions = BTreeMap::<String, InteractionState>::new();
     let mut last_system = Value::Null;
     let mut requests_by_id = BTreeMap::<String, String>::new();
+    let mut panels = scene::Panels::default();
     while !quit.load(Ordering::Relaxed)
         && (o.seconds == 0 || start.elapsed() < Duration::from_secs(o.seconds))
     {
@@ -377,6 +378,7 @@ async fn scene_loop(
         system["clipboard"] = json!({"available":clipboard.is_some(),"mime_type":"text/plain;charset=utf-8","characters":clipboard.as_ref().map(|s|s.chars().count()),"text_preview":clipboard.as_ref().map(|s|s.chars().take(256).collect::<String>())});
         system["workspace"] =
             json!({"available":active_workspace.is_some(),"active_workspace":active_workspace});
+        system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details});
         if system != last_system {
             client.send("SystemState", system.clone(), &[])?;
             write_state(&o.state_file, &system)?;
@@ -390,6 +392,7 @@ async fn scene_loop(
                 active_workspace,
                 clipboard.as_deref(),
                 &last_result,
+                &panels,
             );
             let mut ops = built.operations();
             let fresh: BTreeSet<String> = built.widgets.iter().map(|w| w.id.clone()).collect();
@@ -461,6 +464,20 @@ async fn scene_loop(
                     println!("XR_SYSTEM_UI_SESSION_ENDING={payload}");
                     break;
                 }
+                "ComponentCommand" => {
+                    let panel = payload["panel"]
+                        .as_str()
+                        .context("component command missing panel")?;
+                    let intent = payload["intent"]
+                        .as_str()
+                        .context("component command missing intent")?;
+                    if panels.command(panel, intent) {
+                        println!("XR_SYSTEM_PANEL_COMMAND={payload}");
+                        scene_dirty = true;
+                    } else {
+                        eprintln!("XR_SYSTEM_PANEL_COMMAND_UNSUPPORTED={payload}");
+                    }
+                }
                 "InputAccepted" | "WorkspaceApplied" | "IntentAccepted" => {
                     let id = m["request_id"].as_str().unwrap_or("");
                     if let Some(action) = requests_by_id.remove(id) {
@@ -483,7 +500,34 @@ async fn scene_loop(
                         continue;
                     };
                     let action = action.as_str();
-                    if action == "refresh" {
+                    if let Some(panel) = action.strip_prefix("ui:") {
+                        if panels.command(panel, "toggle") {
+                            scene_dirty = true;
+                        }
+                    } else if action == "launcher-toggle" {
+                        let id = client.send(
+                            "ComponentIntent",
+                            json!({"role":"dock","panel":"launcher","intent":"toggle"}),
+                            &[],
+                        )?;
+                        requests_by_id.insert(id, action.into());
+                    } else if let Some(shortcut) = action.strip_prefix("shortcut:") {
+                        let key = match shortcut {
+                            "copy" => 46,
+                            "paste" => 47,
+                            _ => bail!("unknown clipboard shortcut"),
+                        };
+                        for (keycode, pressed) in
+                            [(29, true), (key, true), (key, false), (29, false)]
+                        {
+                            let id = client.send(
+                                "KeyIntent",
+                                json!({"keycode":keycode,"pressed":pressed}),
+                                &[],
+                            )?;
+                            requests_by_id.insert(id, action.into());
+                        }
+                    } else if action == "refresh" {
                         requests.send(("refresh".into(), None))?;
                     } else if let Some(value) = action.strip_prefix("theme:") {
                         requests.send(("theme".into(), Some(value.into())))?;
