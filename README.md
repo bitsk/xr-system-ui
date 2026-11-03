@@ -5,6 +5,9 @@ and spatial keyboard. Spatial Kit owns widgets; Shell owns rendering, focus and
 workspaces; the Wayland service owns selection, seat and text input. This
 component performs OS operations on its own worker, outside the render thread.
 It opens no OpenXR session and package installation starts no services.
+Widget actions use Kit interaction state: a button requires a matching captured
+press/release inside its bounds, cancellation clears the gesture, and a slider
+commits one final captured value rather than queuing OS writes on every drag.
 
 Implemented adapters query actual services and report unavailable capabilities:
 

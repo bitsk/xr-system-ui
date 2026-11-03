@@ -1,3 +1,10 @@
+xr-system-ui (0.1.1) unstable; urgency=medium
+
+  * Match captured widget interactions before system actions.
+  * Cancel gestures explicitly and commit one final captured slider value.
+
+ -- bits <bigbits@hackx.cc>  Tue, 03 Nov 2026 23:59:42 +0800
+
 xr-system-ui (0.1.0) unstable; urgency=medium
 
   * Add independent control centre, notification and keyboard scene client.

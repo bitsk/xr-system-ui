@@ -17,6 +17,60 @@ use std::{
     time::{Duration, Instant},
 };
 use xr_shell_protocols::Client;
+use xr_spatial_kit::{Action, InteractionState, Kind, Phase, PointerEvent, Widget};
+
+fn input_action(
+    widgets: &mut BTreeMap<String, Widget>,
+    interactions: &mut BTreeMap<String, InteractionState>,
+    payload: &Value,
+    cancel: bool,
+) -> Option<(String, Option<f32>)> {
+    if cancel {
+        if let Some(id) = payload["target_node_id"].as_str() {
+            if let Some(state) = interactions.get_mut(id) {
+                state.cancel();
+            }
+        } else {
+            for state in interactions.values_mut() {
+                state.cancel();
+            }
+        }
+        return None;
+    }
+    let id = payload["target_node_id"].as_str()?;
+    let widget = widgets.get_mut(id)?;
+    let phase = match payload["phase"].as_str()? {
+        "hover" => Phase::Hover,
+        "press" => Phase::Press,
+        "drag" => Phase::Drag,
+        "release" => Phase::Release,
+        _ => return None,
+    };
+    let interaction = payload["interaction_id"].as_str()?;
+    let event = PointerEvent {
+        phase,
+        interaction_id: interaction.into(),
+        local: [
+            payload["local_x"].as_f64()? as f32,
+            payload["local_y"].as_f64()? as f32,
+        ],
+    };
+    let state = interactions.entry(id.into()).or_default();
+    let matching = state.pressed && state.interaction_id.as_deref() == Some(interaction);
+    match state.apply(widget, &event) {
+        Some(Action::Activated(action)) => Some((action, None)),
+        _ if phase == Phase::Release
+            && matching
+            && widget.enabled
+            && widget.kind == Kind::Slider =>
+        {
+            // Commit one final value after a captured gesture; intermediate drag
+            // values stay in the widget instead of queuing OS writes each frame.
+            Some((widget.action_id.clone(), Some(widget.value)))
+        }
+        _ => None,
+    }
+}
 
 struct Options {
     mode: String,
@@ -281,6 +335,8 @@ async fn scene_loop(
     let mut sent_scene = Value::Null;
     let mut scene_dirty = true;
     let mut node_ids = BTreeSet::new();
+    let mut widgets = BTreeMap::<String, Widget>::new();
+    let mut interactions = BTreeMap::<String, InteractionState>::new();
     let mut last_system = Value::Null;
     let mut requests_by_id = BTreeMap::<String, String>::new();
     while !quit.load(Ordering::Relaxed)
@@ -341,6 +397,21 @@ async fn scene_loop(
             }
             let model = json!(ops);
             if model != sent_scene {
+                widgets = built
+                    .widgets
+                    .into_iter()
+                    .map(|mut widget| {
+                        if interactions.get(&widget.id).is_some_and(|s| s.pressed) {
+                            if let Some(old) = widgets.get(&widget.id) {
+                                if widget.kind == Kind::Slider {
+                                    widget.value = old.value;
+                                }
+                            }
+                        }
+                        (widget.id.clone(), widget)
+                    })
+                    .collect();
+                interactions.retain(|id, _| widgets.contains_key(id));
                 client.send("SceneTransaction",json!({"base_revision":revision.to_string(),"revision":(revision+1).to_string(),"operations":model}),&[])?;
                 pending = true;
                 sent_scene = model;
@@ -396,11 +467,16 @@ async fn scene_loop(
                     eprintln!("XR_SYSTEM_SHELL_ERROR={payload}");
                     scene_dirty = true;
                 }
-                "InputEvent" => {
-                    if payload["phase"] != "release" {
+                "InputEvent" | "Cancel" => {
+                    let Some((action, slider_value)) = input_action(
+                        &mut widgets,
+                        &mut interactions,
+                        payload,
+                        m["type"] == "Cancel",
+                    ) else {
                         continue;
-                    }
-                    let action = payload["action_id"].as_str().unwrap_or("");
+                    };
+                    let action = action.as_str();
                     if action == "refresh" {
                         requests.send(("refresh".into(), None))?;
                     } else if let Some(value) = action.strip_prefix("theme:") {
@@ -408,9 +484,8 @@ async fn scene_loop(
                     } else if let Some(value) = action.strip_prefix("ime:") {
                         requests.send(("ime".into(), Some(value.into())))?;
                     } else if action == "volume" {
-                        let value = payload["value"]
-                            .as_f64()
-                            .context("slider event missing actual value")?;
+                        let value =
+                            slider_value.context("slider gesture missing captured value")?;
                         requests
                             .send(("volume".into(), Some(value.clamp(0., 100.).to_string())))?;
                     } else if action == "mute-toggle" {
@@ -463,7 +538,6 @@ async fn scene_loop(
                         }
                     }
                 }
-                "Cancel" => {}
                 _ => {}
             }
         }
