@@ -297,7 +297,7 @@ fn status_island(s: &mut Scene, state: &Value) {
             "ui:control",
             "dock.status-icon",
         )
-        .with_icon("ukui-xr-settings")
+        .with_icon("ukui-xr-status-settings")
         .parent(parent),
     );
     if state["notifications"]["count"].as_u64().unwrap_or(0) > 0 {
