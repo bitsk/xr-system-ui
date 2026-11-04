@@ -168,6 +168,9 @@ fn write_state(path: &Option<PathBuf>, value: &Value) -> Result<()> {
     Ok(())
 }
 fn preference_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("XR_SYSTEM_UI_PREFERENCES_FILE").filter(|p| !p.is_empty()) {
+        return Some(PathBuf::from(path));
+    }
     std::env::var_os("XDG_CONFIG_HOME")
         .filter(|p| !p.is_empty())
         .map(PathBuf::from)

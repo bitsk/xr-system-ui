@@ -1,3 +1,9 @@
+xr-system-ui (0.2.6) unstable; urgency=medium
+
+  * Accept an explicit persistent preferences file for private scene sessions.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 22:25:26 +0800
+
 xr-system-ui (0.2.5) unstable; urgency=medium
 
   * Add fixed/follow controls and persist acknowledged per-user taskbar choices.

@@ -172,3 +172,6 @@ space key spans 442 logical pixels, equal to five letter keys plus their gaps.
 控制中心的“固定任务栏 / 跟随头部”按钮通过 Shell 的 `taskbar.v1` 切换全部三岛。
 首次默认固定；收到确认后保存到用户配置 `xr-system-ui/preferences.json`，下次会话恢复选择。
 也可使用 `xr-system-ui action taskbar fixed|follow --socket PATH`，同样读回确认后保存。
+
+隔离会话通过 `XR_SYSTEM_UI_PREFERENCES_FILE` 显式指定持久偏好文件；
+未指定时遵循用户 XDG_CONFIG_HOME。首选项不存入会话销毁时清理的私有目录。
