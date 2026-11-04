@@ -2,7 +2,7 @@ Source: xr-system-ui
 Section: x11
 Priority: optional
 Maintainer: openKylin XR SIG <xr@lists.openkylin.top>
-Build-Depends: debhelper-compat (= 13), cargo (>= 1.88), rustc (>= 1.88), python3, librust-xr-shell-protocols-dev (>= 0.2.0), librust-xr-shell-protocols-dev (<< 0.3.0), librust-xr-spatial-kit-dev (= 0.2.2)
+Build-Depends: debhelper-compat (= 13), cargo (>= 1.88), rustc (>= 1.88), python3, librust-xr-shell-protocols-dev (>= 0.2.0), librust-xr-shell-protocols-dev (<< 0.3.0), librust-xr-spatial-kit-dev (= 0.2.3)
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
 
