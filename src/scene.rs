@@ -431,20 +431,40 @@ fn control(s: &mut Scene, state: &Value) {
         "网络",
         false,
     );
-    s.push(Widget::card("network-card", [28., 406., 544., 86.], "panel.card").parent("panel"));
+    s.push(Widget::card("network-card", [28., 406., 544., 62.], "panel.card").parent("panel"));
     text(
         s,
         "network-card",
         "network-status",
-        [20., 22., 440., 34.],
+        [20., 14., 440., 34.],
         &network_label(state),
         false,
     );
+    let mode = state["taskbar"]["mode"].as_str().unwrap_or("fixed");
+    for (id, x, label, selected) in [
+        ("fixed", 28., "固定任务栏", "fixed"),
+        ("follow", 308., "跟随头部", "follow"),
+    ] {
+        s.push(
+            Widget::button(
+                &format!("taskbar-{id}"),
+                [x, 482., 264., 48.],
+                label,
+                &format!("taskbar:{selected}"),
+                if mode == selected {
+                    "button.primary"
+                } else {
+                    "button.secondary"
+                },
+            )
+            .parent("panel"),
+        );
+    }
     text(
         s,
         "panel",
         "tools-title",
-        [28., 530., 400., 30.],
+        [28., 546., 400., 30.],
         "快捷工具",
         false,
     );
@@ -453,13 +473,13 @@ fn control(s: &mut Scene, state: &Value) {
         ("notifications-toggle", 214., "通知", "ui:notifications"),
         ("clipboard-toggle", 400., "剪贴板", "ui:clipboard"),
     ] {
-        button(s, "panel", id, [x, 574., 172., 52.], label, action, true);
+        button(s, "panel", id, [x, 588., 172., 48.], label, action, true);
     }
     button(
         s,
         "panel",
         "details-toggle",
-        [28., 638., 264., 44.],
+        [28., 650., 264., 36.],
         "系统详情",
         "ui:details",
         true,
@@ -468,7 +488,7 @@ fn control(s: &mut Scene, state: &Value) {
         s,
         "panel",
         "applications",
-        [308., 638., 264., 44.],
+        [308., 650., 264., 36.],
         "应用库",
         "launcher-toggle",
         true,

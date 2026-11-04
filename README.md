@@ -168,3 +168,7 @@ space key spans 442 logical pixels, equal to five letter keys plus their gaps.
 右状态岛通过 `with_spatial_policy(taskbar::POLICY)` 加入 Shell 的三岛共享
 跟随锚点（需要 Shell 0.2.9 的 `scene.spatial-policy.v1`）。控制中心、键盘和
 其他独立面板保留 world-locked 策略；按钮捕获时冻结整个三岛的跟随。
+
+控制中心的“固定任务栏 / 跟随头部”按钮通过 Shell 的 `taskbar.v1` 切换全部三岛。
+首次默认固定；收到确认后保存到用户配置 `xr-system-ui/preferences.json`，下次会话恢复选择。
+也可使用 `xr-system-ui action taskbar fixed|follow --socket PATH`，同样读回确认后保存。

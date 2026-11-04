@@ -1,3 +1,9 @@
+xr-system-ui (0.2.5) unstable; urgency=medium
+
+  * Add fixed/follow controls and persist acknowledged per-user taskbar choices.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 22:15:50 +0800
+
 xr-system-ui (0.2.4) unstable; urgency=medium
 
   * Attach only the status island to the shared taskbar follow policy.

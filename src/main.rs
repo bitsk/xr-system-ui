@@ -113,7 +113,7 @@ fn options() -> Result<Options> {
             "--isolated-notifications" => o.isolated_notifications = true,
             "--help" | "-h" => {
                 println!(
-                    "xr-system-ui probe\nxr-system-ui action theme|volume|mute|ime VALUE\nxr-system-ui action workspace|clipboard|text|key VALUE --socket PATH\nxr-system-ui run --socket PATH [--seconds N] [--state-file FILE] [--isolated-notifications]\nNotification ownership requires XR_SYSTEM_UI_ISOLATED_BUS=1 and a private bus."
+                    "xr-system-ui probe\nxr-system-ui action theme|volume|mute|ime VALUE\nxr-system-ui action taskbar fixed|follow --socket PATH\nxr-system-ui action workspace|clipboard|text|key VALUE --socket PATH\nxr-system-ui run --socket PATH [--seconds N] [--state-file FILE] [--isolated-notifications]\nNotification ownership requires XR_SYSTEM_UI_ISOLATED_BUS=1 and a private bus."
                 );
                 std::process::exit(0)
             }
@@ -139,6 +139,7 @@ fn connect(o: &Options) -> Result<Client> {
             "core.v1",
             "scene.v1",
             "scene.spatial-policy.v1",
+            "taskbar.v1",
             "snapshot.v1",
             "input.v1",
             "system.v1",
@@ -152,7 +153,7 @@ fn write_state(path: &Option<PathBuf>, value: &Value) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let tmp = path.with_extension("json.tmp");
+        let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
         let mut file = fs::OpenOptions::new()
             .create(true)
             .truncate(true)
@@ -166,6 +167,28 @@ fn write_state(path: &Option<PathBuf>, value: &Value) -> Result<()> {
     }
     Ok(())
 }
+fn preference_path() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
+        .map(|p| p.join("xr-system-ui/preferences.json"))
+}
+fn read_taskbar_mode() -> String {
+    preference_path()
+        .and_then(|p| fs::read(p).ok())
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| {
+            v["taskbar_mode"]
+                .as_str()
+                .filter(|m| ["fixed", "follow"].contains(m))
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "fixed".into())
+}
+fn save_taskbar_mode(mode: &str) -> Result<()> {
+    write_state(&preference_path(), &json!({"schema":1,"taskbar_mode":mode}))
+}
 fn action_error(message: &Value) -> Result<()> {
     if ["Error", "SceneRejected"].contains(&message["type"].as_str().unwrap_or("")) {
         bail!("Shell rejected request: {}", message["payload"]);
@@ -175,6 +198,13 @@ fn action_error(message: &Value) -> Result<()> {
 fn shell_action(o: &Options, name: &str, value: &str) -> Result<Value> {
     let mut client = connect(o)?;
     let (kind, payload, expected) = match name {
+        "taskbar" => {
+            ensure!(
+                ["fixed", "follow"].contains(&value),
+                "taskbar mode must be fixed or follow"
+            );
+            ("TaskbarIntent", json!({"mode":value}), "TaskbarApplied")
+        }
         "workspace" => {
             let n: u64 = value.parse()?;
             ensure!(n < 4, "workspace must be 0..3");
@@ -219,6 +249,9 @@ fn shell_action(o: &Options, name: &str, value: &str) -> Result<Value> {
                         "clipboard readback mismatch"
                     );
                 }
+                if expected == "TaskbarApplied" {
+                    save_taskbar_mode(value)?;
+                }
                 return Ok(
                     json!({"action":name,"requested":value,"observed":packet.message["payload"],
                     "client_text_verified":false,"verification":if expected=="InputAccepted"{"routed_to_acknowledged_focus"}else{"state_readback"}}),
@@ -245,7 +278,7 @@ async fn run() -> Result<()> {
     }
     if o.mode == "action" {
         let name = o.action.as_deref().context("action name required")?;
-        let result = if ["workspace", "clipboard", "text", "key"].contains(&name) {
+        let result = if ["workspace", "clipboard", "text", "key", "taskbar"].contains(&name) {
             shell_action(
                 &o,
                 name,
@@ -325,6 +358,10 @@ async fn scene_loop(
     updates: mpsc::Receiver<Value>,
 ) -> Result<()> {
     let mut client = connect(o)?;
+    let preferred_mode = read_taskbar_mode();
+    let mut taskbar_request =
+        Some(client.send("TaskbarIntent", json!({"mode":preferred_mode}), &[])?);
+    let mut taskbar_mode = "fixed".to_string();
     client.send("GetSnapshot", json!({}), &[])?;
     client.send("GetClipboard", json!({}), &[])?;
     let start = Instant::now();
@@ -379,6 +416,7 @@ async fn scene_loop(
         system["clipboard"] = json!({"available":clipboard.is_some(),"mime_type":"text/plain;charset=utf-8","characters":clipboard.as_ref().map(|s|s.chars().count()),"text_preview":clipboard.as_ref().map(|s|s.chars().take(256).collect::<String>())});
         system["workspace"] =
             json!({"available":active_workspace.is_some(),"active_workspace":active_workspace});
+        system["taskbar"] = json!({"available":true,"mode":taskbar_mode});
         system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details});
         if system != last_system {
             client.send("SystemState", system.clone(), &[])?;
@@ -442,7 +480,26 @@ async fn scene_loop(
                     scene_dirty = true;
                     last_result = format!("场景未接受：{payload}");
                 }
+                "TaskbarApplied" => {
+                    if taskbar_request.as_deref() == m["request_id"].as_str() {
+                        let mode = payload["mode"]
+                            .as_str()
+                            .context("taskbar reply missing mode")?;
+                        ensure!(["fixed", "follow"].contains(&mode), "invalid taskbar reply");
+                        taskbar_mode = mode.into();
+                        save_taskbar_mode(mode)?;
+                        taskbar_request = None;
+                        scene_dirty = true;
+                    }
+                }
                 "Snapshot" | "StateChanged" => {
+                    if let Some(mode) = payload["taskbar_mode"].as_str() {
+                        if taskbar_mode != mode && taskbar_request.is_none() {
+                            taskbar_mode = mode.into();
+                            save_taskbar_mode(mode)?;
+                            scene_dirty = true;
+                        }
+                    }
                     let new = payload["active_workspace"].as_u64();
                     if new != active_workspace {
                         active_workspace = new;
@@ -505,6 +562,13 @@ async fn scene_loop(
                         if panels.command(panel, "toggle") {
                             scene_dirty = true;
                         }
+                    } else if let Some(mode) = action.strip_prefix("taskbar:") {
+                        ensure!(
+                            ["fixed", "follow"].contains(&mode),
+                            "invalid taskbar action"
+                        );
+                        taskbar_request =
+                            Some(client.send("TaskbarIntent", json!({"mode":mode}), &[])?);
                     } else if action == "launcher-toggle" {
                         let id = client.send(
                             "ComponentIntent",
