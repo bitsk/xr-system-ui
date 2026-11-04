@@ -222,15 +222,15 @@ fn status_island(s: &mut Scene, state: &Value) {
         })
         .and_then(|d| d["kind"].as_str());
     let network_icon = match connected_kind {
-        Some("wifi") => "network-wireless-symbolic",
-        Some("ethernet") => "network-wired-symbolic",
-        Some(_) => "network-transmit-receive-symbolic",
-        None => "network-offline-symbolic",
+        Some("wifi") => "ukui-xr-network",
+        Some("ethernet") => "ukui-xr-wired",
+        Some(_) => "ukui-xr-network",
+        None => "ukui-xr-network-offline",
     };
     s.push(
         Widget::button(
             "status-network",
-            [18., 12., 44., 48.],
+            [26., 10., 52., 52.],
             "",
             "ui:control",
             "dock.status-icon",
@@ -239,8 +239,9 @@ fn status_island(s: &mut Scene, state: &Value) {
         .parent(parent),
     );
     for (id, x) in [
-        ("status-network-separator", 78.),
-        ("status-volume-separator", 150.),
+        ("status-network-separator", 96.),
+        ("status-volume-separator", 184.),
+        ("status-settings-separator", 350.),
     ] {
         s.push(Widget::card(id, [x, 20., 1., 32.], "taskbar.separator").parent(parent));
     }
@@ -248,15 +249,15 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::button(
             "status-volume",
-            [90., 12., 44., 48.],
+            [112., 10., 52., 52.],
             "",
             "mute-toggle",
             "dock.status-icon",
         )
         .with_icon(if mute == Some(true) {
-            "audio-volume-muted-symbolic"
+            "ukui-xr-audio-muted"
         } else {
-            "audio-volume-high-symbolic"
+            "ukui-xr-audio"
         })
         .enabled(available(state, "volume") && mute.is_some())
         .parent(parent),
@@ -264,18 +265,14 @@ fn status_island(s: &mut Scene, state: &Value) {
     let percent = state["battery"]["state"]["percent"]
         .as_f64()
         .filter(|n| available(state, "battery") && n.is_finite() && *n >= 0. && *n <= 100.);
-    let charging = field(state, "battery", "status") == "Charging";
-    let icon = match percent {
-        None => "battery-missing-symbolic",
-        Some(_) if charging => "battery-good-charging-symbolic",
-        Some(p) if p <= 15. => "battery-caution-symbolic",
-        Some(_) => "battery-good-symbolic",
-    };
+    let icon = percent
+        .map(|p| format!("ukui-xr-battery-{p:.0}"))
+        .unwrap_or_else(|| "ukui-xr-battery-unknown".into());
     s.push(
         Widget::icon(
             "status-battery",
-            [166., 20., 32., 32.],
-            icon,
+            [206., 20., 40., 32.],
+            &icon,
             "dock.status-icon",
         )
         .parent(parent),
@@ -286,7 +283,7 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::text(
             "status-battery-percent",
-            [206., 20., 70., 32.],
+            [262., 12., 76., 48.],
             &label,
             "taskbar.status",
         )
@@ -295,12 +292,12 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::button(
             "system",
-            [290., 12., 52., 48.],
+            [366., 10., 52., 52.],
             "",
             "ui:control",
             "dock.status-icon",
         )
-        .with_icon("preferences-system-symbolic")
+        .with_icon("ukui-xr-settings")
         .parent(parent),
     );
     if state["notifications"]["count"].as_u64().unwrap_or(0) > 0 {

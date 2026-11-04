@@ -1,3 +1,10 @@
+xr-system-ui (0.2.3) unstable; urgency=medium
+
+  * Use shared wider taskbar geometry and consistent monochrome status controls.
+  * Keep real battery percentage and service capabilities independent of artwork.
+
+ -- bits <bigbits@hackx.cc>  Wed, 04 Nov 2026 20:35:37 +0800
+
 xr-system-ui (0.2.2) unstable; urgency=medium
 
   * Add the permanent right taskbar island using shared Kit geometry.
