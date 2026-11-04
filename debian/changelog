@@ -1,3 +1,11 @@
+xr-system-ui (0.2.7) unstable; urgency=medium
+
+  * Add English symbol and Chinese punctuation pages to the spatial keyboard.
+  * Send shifted symbols as balanced evdev chords; keep comma and period on ABC.
+  * Align the Spatial Kit build dependency with the locked SDK version.
+
+ -- bits <bigbits@hackx.cc>  Thu, 05 Nov 2026 01:41:55 +0800
+
 xr-system-ui (0.2.6) unstable; urgency=medium
 
   * Accept an explicit persistent preferences file for private scene sessions.

@@ -161,7 +161,7 @@ The control scene uses freedesktop icon IDs present in the target theme and
 reserves a 44-pixel volume interaction band, a wider mute button and 44-pixel
 bottom actions for larger semibold labels. Typography, capsule rendering and
 corner tokens remain owned by Shell and Spatial Kit. Keyboard logical size stays
-1000 by 280 with unchanged key actions and `keyboard.key` styles; its physical
+1000 by 280 with `keyboard.key` styles; its physical
 size is 1.053 by 0.29484 metres at (0, 0.54, -1.27), pitched 16.5 degrees. The
 space key spans 442 logical pixels, equal to five letter keys plus their gaps.
 
@@ -175,3 +175,12 @@ space key spans 442 logical pixels, equal to five letter keys plus their gaps.
 
 隔离会话通过 `XR_SYSTEM_UI_PREFERENCES_FILE` 显式指定持久偏好文件；
 未指定时遵循用户 XDG_CONFIG_HOME。首选项不存入会话销毁时清理的私有目录。
+
+The keyboard header offers `ABC`, `符号` (all 32 ASCII punctuation symbols) and
+`中文标点` (32 Chinese punctuation characters). ABC also has comma and period
+keys. Page selection is independent of the Fcitx method and survives hiding the
+keyboard within the session. English symbols use US evdev keys and balanced
+Shift chords, so they also work in keyboard-only applications; their output
+follows the active keymap/IME. Select EN for literal US symbols. Chinese
+punctuation uses the existing Unicode TextCommit path and requires an active
+text-input-v3 client; an unsupported client reports the normal Shell error.

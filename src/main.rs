@@ -168,7 +168,8 @@ fn write_state(path: &Option<PathBuf>, value: &Value) -> Result<()> {
     Ok(())
 }
 fn preference_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("XR_SYSTEM_UI_PREFERENCES_FILE").filter(|p| !p.is_empty()) {
+    if let Some(path) = std::env::var_os("XR_SYSTEM_UI_PREFERENCES_FILE").filter(|p| !p.is_empty())
+    {
         return Some(PathBuf::from(path));
     }
     std::env::var_os("XDG_CONFIG_HOME")
@@ -420,7 +421,7 @@ async fn scene_loop(
         system["workspace"] =
             json!({"available":active_workspace.is_some(),"active_workspace":active_workspace});
         system["taskbar"] = json!({"available":true,"mode":taskbar_mode});
-        system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details});
+        system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details,"keyboard_page":match panels.keyboard_page {scene::KeyboardPage::Letters => "letters",scene::KeyboardPage::Symbols => "symbols",scene::KeyboardPage::Chinese => "chinese"}});
         if system != last_system {
             client.send("SystemState", system.clone(), &[])?;
             write_state(&o.state_file, &system)?;
@@ -565,6 +566,14 @@ async fn scene_loop(
                         if panels.command(panel, "toggle") {
                             scene_dirty = true;
                         }
+                    } else if let Some(page) = action.strip_prefix("keyboard:") {
+                        panels.keyboard_page = match page {
+                            "letters" => scene::KeyboardPage::Letters,
+                            "symbols" => scene::KeyboardPage::Symbols,
+                            "chinese" => scene::KeyboardPage::Chinese,
+                            _ => bail!("unknown keyboard page"),
+                        };
+                        scene_dirty = true;
                     } else if let Some(mode) = action.strip_prefix("taskbar:") {
                         ensure!(
                             ["fixed", "follow"].contains(&mode),
@@ -634,14 +643,27 @@ async fn scene_loop(
                         let id = client.send("TextCommit", json!({"text":text}), &[])?;
                         requests_by_id.insert(id, action.into());
                     } else if let Some(code) = action.strip_prefix("key:") {
-                        let key: u32 = code.parse()?;
-                        client.send("KeyIntent", json!({"keycode":key,"pressed":true}), &[])?;
-                        let id = client.send(
-                            "KeyIntent",
-                            json!({"keycode":key,"pressed":false}),
-                            &[],
-                        )?;
-                        requests_by_id.insert(id, action.into());
+                        let keys = code
+                            .split('+')
+                            .map(str::parse::<u32>)
+                            .collect::<Result<Vec<_>, _>>()?;
+                        ensure!(keys.iter().all(|key| *key <= 767), "invalid evdev keycode");
+                        for key in &keys {
+                            let id = client.send(
+                                "KeyIntent",
+                                json!({"keycode":key,"pressed":true}),
+                                &[],
+                            )?;
+                            requests_by_id.insert(id, action.into());
+                        }
+                        for key in keys.iter().rev() {
+                            let id = client.send(
+                                "KeyIntent",
+                                json!({"keycode":key,"pressed":false}),
+                                &[],
+                            )?;
+                            requests_by_id.insert(id, action.into());
+                        }
                     } else if let Some(id) = action.strip_prefix("notice-close:") {
                         if let Some(s) = server {
                             s.dismiss(id.parse()?, 2).await?;

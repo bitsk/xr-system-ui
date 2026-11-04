@@ -3,6 +3,14 @@ use crate::notifications::Notice;
 use serde_json::Value;
 use xr_spatial_kit::{Scene, Widget, taskbar};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyboardPage {
+    #[default]
+    Letters,
+    Symbols,
+    Chinese,
+}
+
 #[derive(Clone, Debug)]
 pub struct Panels {
     pub control: bool,
@@ -10,6 +18,7 @@ pub struct Panels {
     pub notifications: bool,
     pub clipboard: bool,
     pub details: bool,
+    pub keyboard_page: KeyboardPage,
 }
 impl Default for Panels {
     fn default() -> Self {
@@ -19,6 +28,7 @@ impl Default for Panels {
             notifications: false,
             clipboard: false,
             details: false,
+            keyboard_page: KeyboardPage::Letters,
         }
     }
 }
@@ -180,7 +190,7 @@ pub fn build(
         }
     }
     if panels.keyboard {
-        keyboard(&mut s, state);
+        keyboard(&mut s, state, panels.keyboard_page);
     }
     if panels.notifications {
         notifications(&mut s, state, notices);
@@ -654,7 +664,7 @@ fn details(s: &mut Scene, state: &Value, active_workspace: Option<u64>, last_res
         );
     }
 }
-fn keyboard(s: &mut Scene, state: &Value) {
+fn keyboard(s: &mut Scene, state: &Value, page: KeyboardPage) {
     let p = spatial(
         s,
         "keyboard-panel",
@@ -671,6 +681,44 @@ fn keyboard(s: &mut Scene, state: &Value) {
         "空间键盘",
         false,
     );
+    for (id, x, label, action, selected) in [
+        (
+            "keyboard-letters",
+            300.,
+            "ABC",
+            "keyboard:letters",
+            KeyboardPage::Letters,
+        ),
+        (
+            "keyboard-symbols",
+            414.,
+            "符号",
+            "keyboard:symbols",
+            KeyboardPage::Symbols,
+        ),
+        (
+            "keyboard-chinese",
+            528.,
+            "中文标点",
+            "keyboard:chinese",
+            KeyboardPage::Chinese,
+        ),
+    ] {
+        s.push(
+            Widget::button(
+                id,
+                [x, 8., 104., 32.],
+                label,
+                action,
+                if page == selected {
+                    "button.primary"
+                } else {
+                    "button.secondary"
+                },
+            )
+            .parent(&p),
+        );
+    }
     button(
         s,
         &p,
@@ -698,18 +746,94 @@ fn keyboard(s: &mut Scene, state: &Value) {
         "ui:keyboard",
         true,
     );
-    for (row, letters) in ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"]
-        .iter()
-        .enumerate()
-    {
-        let left = (1000. - letters.len() as f32 * 90.) / 2.;
-        for (col, ch) in letters.chars().enumerate() {
+    if page == KeyboardPage::Letters {
+        for (row, letters) in ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"]
+            .iter()
+            .enumerate()
+        {
+            let left = (1000. - letters.len() as f32 * 90.) / 2.;
+            for (col, ch) in letters.chars().enumerate() {
+                s.push(
+                    Widget::button(
+                        &format!("key-{ch}"),
+                        [left + col as f32 * 90., 48. + row as f32 * 42., 82., 36.],
+                        &ch.to_ascii_uppercase().to_string(),
+                        &format!("key:{}", [2, 16, 30, 44][row] + col),
+                        "keyboard.key",
+                    )
+                    .parent(&p),
+                );
+            }
+        }
+        for (id, x, label, action) in [
+            ("key-comma", 50., ",", "key:51"),
+            ("key-period", 860., ".", "key:52"),
+        ] {
+            s.push(
+                Widget::button(id, [x, 174., 82., 36.], label, action, "keyboard.key").parent(&p),
+            );
+        }
+    } else {
+        // US punctuation uses evdev (including Shift) so keyboard-only clients
+        // and the active IME receive real keys. Chinese punctuation is literal.
+        let symbols = [
+            ("!", "key:42+2"),
+            ("@", "key:42+3"),
+            ("#", "key:42+4"),
+            ("$", "key:42+5"),
+            ("%", "key:42+6"),
+            ("^", "key:42+7"),
+            ("&", "key:42+8"),
+            ("*", "key:42+9"),
+            ("(", "key:42+10"),
+            (")", "key:42+11"),
+            ("[", "key:26"),
+            ("]", "key:27"),
+            ("{", "key:42+26"),
+            ("}", "key:42+27"),
+            ("<", "key:42+51"),
+            (">", "key:42+52"),
+            ("-", "key:12"),
+            ("_", "key:42+12"),
+            ("=", "key:13"),
+            ("+", "key:42+13"),
+            ("\\", "key:43"),
+            ("|", "key:42+43"),
+            ("/", "key:53"),
+            ("?", "key:42+53"),
+            (";", "key:39"),
+            (":", "key:42+39"),
+            ("'", "key:40"),
+            ("\"", "key:42+40"),
+            (",", "key:51"),
+            (".", "key:52"),
+            ("`", "key:41"),
+            ("~", "key:42+41"),
+        ];
+        let chinese = "，。、；：？！…—·“”‘’（）【】《》〈〉「」『』〔〕［］｛｝";
+        let keys: Vec<(String, String)> = if page == KeyboardPage::Symbols {
+            symbols
+                .iter()
+                .map(|(label, action)| (label.to_string(), action.to_string()))
+                .collect()
+        } else {
+            chinese
+                .chars()
+                .map(|ch| (ch.to_string(), format!("type:{ch}")))
+                .collect()
+        };
+        for (i, (label, action)) in keys.iter().enumerate() {
             s.push(
                 Widget::button(
-                    &format!("key-{ch}"),
-                    [left + col as f32 * 90., 48. + row as f32 * 42., 82., 36.],
-                    &ch.to_ascii_uppercase().to_string(),
-                    &format!("key:{}", [2, 16, 30, 44][row] + col),
+                    &format!("key-symbol-{i}"),
+                    [
+                        140. + (i % 8) as f32 * 90.,
+                        48. + (i / 8) as f32 * 42.,
+                        82.,
+                        36.,
+                    ],
+                    label,
+                    action,
                     "keyboard.key",
                 )
                 .parent(&p),
