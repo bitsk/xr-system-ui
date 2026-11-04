@@ -138,6 +138,7 @@ fn connect(o: &Options) -> Result<Client> {
         &[
             "core.v1",
             "scene.v1",
+            "scene.spatial-policy.v1",
             "snapshot.v1",
             "input.v1",
             "system.v1",

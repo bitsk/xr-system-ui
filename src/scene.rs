@@ -198,6 +198,7 @@ fn status_island(s: &mut Scene, state: &Value) {
         taskbar::SIDE_SIZE,
         taskbar::RIGHT_POSITION,
     )
+    .with_spatial_policy(taskbar::POLICY)
     .with_rotation(taskbar::ROTATION);
     group.style_id = "dock.background".into();
     s.push(group);

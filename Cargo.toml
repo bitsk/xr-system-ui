@@ -1,6 +1,6 @@
 [package]
 name = "xr-system-ui"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "UKUI XR scene components and real system-service adapters"

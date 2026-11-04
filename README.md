@@ -164,3 +164,7 @@ corner tokens remain owned by Shell and Spatial Kit. Keyboard logical size stays
 1000 by 280 with unchanged key actions and `keyboard.key` styles; its physical
 size is 1.053 by 0.29484 metres at (0, 0.54, -1.27), pitched 16.5 degrees. The
 space key spans 442 logical pixels, equal to five letter keys plus their gaps.
+
+右状态岛通过 `with_spatial_policy(taskbar::POLICY)` 加入 Shell 的三岛共享
+跟随锚点（需要 Shell 0.2.9 的 `scene.spatial-policy.v1`）。控制中心、键盘和
+其他独立面板保留 world-locked 策略；按钮捕获时冻结整个三岛的跟随。
