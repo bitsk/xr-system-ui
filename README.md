@@ -41,8 +41,8 @@ Unavailable services remain unavailable rather than producing synthetic states.
 
 The right status island is always present, including when `control=false`.
 Its shared Kit transform keeps a 52-logical-pixel / .0832 m open gap from the
-centre taskbar. `status-network` and the compatible `system` settings button
-both toggle the existing control panel (`ui:control`). `status-volume` sends
+centre taskbar. `status-network` opens the Wi-Fi selection panel. The compatible `system` settings
+button toggles the control panel (`ui:control`); its network card also opens Wi-Fi. `status-volume` sends
 `mute-toggle` only when a real mute boolean is known. Battery icon/percentage
 are read-only; unknown percentage displays `--`. Symbolic icon IDs and semantic
 styles inherit the reference colour rather than forcing white. A pending
@@ -61,7 +61,7 @@ polling service is created: the existing system worker reads these attributes.
 See the [Linux power_supply class](https://www.kernel.org/doc/html/latest/power/power_supply_class.html)
 for the units and optional-attribute contract.
 
-Shell `ComponentCommand` supports `control`, `keyboard`, and `notifications`
+Shell `ComponentCommand` supports `control`, `keyboard`, `wifi`, and `notifications`
 with `toggle`, `show`, and `hide`. The control centre's application button sends
 `ComponentIntent` for Dock's launcher. Its own tool buttons open the independent
 panels; copy/paste shortcuts send actual evdev Ctrl+C/V into the acknowledged
@@ -75,7 +75,7 @@ Implemented adapters query actual services and report unavailable capabilities:
 | --- | --- |
 | UKUI theme | `org.ukui.style` through GSettings; light/dark write and readback |
 | Volume/mute | Pulse API through `pactl`; PipeWire Pulse is supported; a virtual sink is labelled explicitly |
-| Network | NetworkManager status through `nmcli`; no fabricated Wi-Fi device or network toggle |
+| Network | NetworkManager system D-Bus; actual device/AP/profile state, scan completion, radio readback and connection activation |
 | Notifications | Real `org.freedesktop.Notifications` D-Bus service, close/action signals and expiration; explicit private bus only |
 | Clipboard | Shell/Wayland selection bridge; waits for actual selection update, never the original desktop clipboard |
 | Workspaces | Shell snapshot and acknowledged `WorkspaceIntent`; no X11 workspace mutation |
@@ -184,3 +184,57 @@ Shift chords, so they also work in keyboard-only applications; their output
 follows the active keymap/IME. Select EN for literal US symbols. Chinese
 punctuation uses the existing Unicode TextCommit path and requires an active
 text-input-v3 client; an unsupported client reports the normal Shell error.
+
+## Wi-Fi selection and connection
+
+System UI 0.2.9 requires Shell/SDK packaging 0.2.16 or newer and negotiates
+`scene.horizon-spawn.v1`. The status island and network card open the same
+Qingkong Wi-Fi panel. It replaces control-centre content while visible, keeps
+four large network rows per page, puts the active connection first, and groups
+radios advertising the same SSID/security on the same adapter. SSID bytes,
+security and adapter identity stay distinct; connection profile names are not
+used as SSIDs. Hidden/unknown SSIDs are omitted. Enterprise/legacy networks
+require an existing system profile; new personal WPA/WPA2/WPA3, open and OWE
+networks can be connected here.
+
+The list distinguishes service unavailable, absent/unready adapter, hardware
+radio disabled, Wi-Fi off, empty scan and scan failure. Opening or refreshing
+requests a real NetworkManager scan and waits for `LastScan` to advance. The
+radio setting is read back. Connected rows/details use that Wi-Fi adapter's
+IPv4/IPv6 connectivity, so an Ethernet uplink cannot make a Wi-Fi captive portal
+appear to have full Internet access. Authentication/authorization failures and
+bounded activation timeouts remain failures; no success is inferred from a
+request being accepted.
+
+Selecting a personal network opens the password form. A dedicated ray keyboard
+supports case, numbers, all ASCII punctuation, spaces and backspace. It edits
+only the component-local password; it sends no application evdev/text commits,
+clipboard requests or password text in SystemState, state files, logs or command
+arguments. Passwords are masked until explicitly revealed, hidden again when
+leaving the field, and cleared when leaving the network or after success. An
+empty password reuses a matching saved profile. New credentials travel only in
+the NetworkManager D-Bus settings dictionary; a new profile is initially in
+memory and saved after observed activation. Failed attempts deactivate/delete
+the newly created in-memory profile. Existing profiles are preserved. The
+connect button validates WPA-PSK byte/hex lengths and prevents duplicate
+requests while work is pending. Cancel leaves the idle form; it is disabled
+while activation is pending. The normal application keyboard stays hidden
+throughout the Wi-Fi page.
+
+Wi-Fi and its password keyboard use independent Shell-owned horizon-spawned
+panels. Their design offsets are relative to a 1.6 m design eye, then frozen
+relative to valid current stereo eye height and head yaw. Shell computes a
+user-facing pitch/yaw and uses the same frozen frame for drawing and ray hits.
+The Wi-Fi panel is 640×580 logical pixels / .99×.90 m; the password keyboard is
+1000×280 / 1.65×.462 m. While editing, the form compacts to 640×320 / .99×.496 m at about +8°.
+The keyboard sits at about -11°, above the persistent taskbar at about -23°.
+The three angular bands have about 2° of visible separation; the keyboard
+minimum target is about 2.25° at its design distance. These are layout calculations; final headset
+comfort, image quality and real connection acceptance remain separate gates.
+
+Editable layout reference: [Wi-Fi board](design/wifi/wifi-board.svg). Its example
+network names are design labels, never runtime data. Interfaces follow the
+[NetworkManager manager API](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html)
+and [wireless device API](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Device.Wireless.html).
+
+The compact input layout is drawn in [keyboard layout](design/wifi/wifi-keyboard-layout.svg). Native verification found the original lower keyboard overlapping the taskbar; the compact form and raised keyboard replace that layout.

@@ -72,27 +72,7 @@ pub fn volume() -> Result<Value> {
     )
 }
 pub fn network() -> Result<Value> {
-    let general = command("nmcli", &["-t", "-f", "STATE,CONNECTIVITY", "general"])?;
-    let (state, connectivity) = general
-        .split_once(':')
-        .context("unexpected NetworkManager status")?;
-    let mut devices = Vec::new();
-    for line in command(
-        "nmcli",
-        &["-t", "-f", "DEVICE,TYPE,STATE", "device", "status"],
-    )?
-    .lines()
-    {
-        let mut parts = line.splitn(3, ':');
-        if let (Some(name), Some(kind), Some(status)) = (parts.next(), parts.next(), parts.next()) {
-            devices.push(json!({"name":name,"kind":kind,"state":status}));
-        }
-    }
-    let has_wifi = devices.iter().any(|d| d["kind"] == "wifi");
-    Ok(
-        json!({"backend":"NetworkManager","state":state,"connectivity":connectivity,
-        "devices":devices,"wifi_device_available":has_wifi,"control":"status_only"}),
-    )
+    crate::network::snapshot()
 }
 #[derive(serde::Serialize)]
 struct BatteryReading {

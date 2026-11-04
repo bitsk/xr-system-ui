@@ -18,6 +18,7 @@ pub struct Panels {
     pub notifications: bool,
     pub clipboard: bool,
     pub details: bool,
+    pub wifi: bool,
     pub keyboard_page: KeyboardPage,
 }
 impl Default for Panels {
@@ -28,18 +29,26 @@ impl Default for Panels {
             notifications: false,
             clipboard: false,
             details: false,
+            wifi: false,
             keyboard_page: KeyboardPage::Letters,
         }
     }
 }
 impl Panels {
     pub fn command(&mut self, panel: &str, intent: &str) -> bool {
+        if panel == "control" && intent == "toggle" && self.wifi {
+            self.wifi = false;
+            self.control = true;
+            self.details = false;
+            return true;
+        }
         let value = match panel {
             "control" => &mut self.control,
             "keyboard" => &mut self.keyboard,
             "notifications" => &mut self.notifications,
             "clipboard" => &mut self.clipboard,
             "details" => &mut self.details,
+            "wifi" => &mut self.wifi,
             _ => return false,
         };
         *value = match intent {
@@ -50,6 +59,7 @@ impl Panels {
         };
         if panel == "control" && self.control {
             self.details = false;
+            self.wifi = false;
         }
         true
     }
@@ -168,6 +178,7 @@ pub fn build(
     clipboard: Option<&str>,
     last_result: &str,
     panels: &Panels,
+    wifi: &crate::wifi::Wifi,
 ) -> Scene {
     let mut s = Scene::new(
         [600., 700.],
@@ -177,7 +188,7 @@ pub fn build(
     )
     .with_rotation([0., -18., 0.]);
     status_island(&mut s, state);
-    if panels.control {
+    if panels.control && !panels.wifi {
         s.push(Widget::card(
             "panel",
             [0., 0., 600., 700.],
@@ -189,7 +200,10 @@ pub fn build(
             control(&mut s, state);
         }
     }
-    if panels.keyboard {
+    if panels.wifi {
+        crate::wifi::build(&mut s, state, wifi);
+    }
+    if panels.keyboard && !panels.wifi {
         keyboard(&mut s, state, panels.keyboard_page);
     }
     if panels.notifications {
@@ -243,7 +257,7 @@ fn status_island(s: &mut Scene, state: &Value) {
             "status-network",
             [26., 10., 52., 52.],
             "",
-            "ui:control",
+            "wifi:open",
             "dock.status-icon",
         )
         .with_icon(network_icon)
@@ -441,7 +455,16 @@ fn control(s: &mut Scene, state: &Value) {
         "网络",
         false,
     );
-    s.push(Widget::card("network-card", [28., 406., 544., 62.], "panel.card").parent("panel"));
+    s.push(
+        Widget::button(
+            "network-card",
+            [28., 406., 544., 62.],
+            "",
+            "wifi:open",
+            "button.secondary",
+        )
+        .parent("panel"),
+    );
     text(
         s,
         "network-card",

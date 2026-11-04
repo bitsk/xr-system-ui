@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod adapters;
+mod network;
 mod notifications;
 mod scene;
+mod wifi;
 use anyhow::{Context, Result, bail, ensure};
 use notifications::NotificationServer;
 use serde_json::{Value, json};
@@ -18,6 +20,24 @@ use std::{
 };
 use xr_shell_protocols::Client;
 use xr_spatial_kit::{Action, InteractionState, Kind, Phase, PointerEvent, Widget};
+
+enum Work {
+    System(String, Option<String>),
+    Wifi(network::Request),
+}
+struct Requests(mpsc::Sender<Work>);
+impl Requests {
+    fn send(&self, (name, value): (String, Option<String>)) -> Result<()> {
+        self.0
+            .send(Work::System(name, value))
+            .map_err(|_| anyhow::anyhow!("system worker stopped"))
+    }
+    fn wifi(&self, request: network::Request) -> Result<()> {
+        self.0
+            .send(Work::Wifi(request))
+            .map_err(|_| anyhow::anyhow!("system worker stopped"))
+    }
+}
 
 fn input_action(
     widgets: &mut BTreeMap<String, Widget>,
@@ -143,6 +163,7 @@ fn connect(o: &Options) -> Result<Client> {
             "snapshot.v1",
             "input.v1",
             "system.v1",
+            "scene.horizon-spawn.v1",
         ],
     )
 }
@@ -309,18 +330,26 @@ async fn run() -> Result<()> {
     ctrlc::set_handler(move || {
         signal.store(true, Ordering::Relaxed);
     })?;
-    let (requests, receiver) = mpsc::channel::<(String, Option<String>)>();
+    let (requests, receiver) = mpsc::channel::<Work>();
     let (updates, events) = mpsc::channel::<Value>();
     let stopped = quit.clone();
     let worker = std::thread::spawn(move || {
         let mut next_probe = Instant::now();
         while !stopped.load(Ordering::Relaxed) {
             match receiver.recv_timeout(Duration::from_millis(100)) {
-                Ok((name, value)) => {
-                    let result = adapters::action(&name, value.as_deref());
+                Ok(work) => {
+                    let wifi = matches!(&work, Work::Wifi(_));
+                    let result = match work {
+                        Work::System(name, value) => adapters::action(&name, value.as_deref()),
+                        Work::Wifi(request) => network::execute(request),
+                    };
                     let update = match result {
-                        Ok(value) => json!({"type":"action","success":true,"result":value}),
-                        Err(e) => json!({"type":"action","success":false,"error":format!("{e:#}")}),
+                        Ok(value) => {
+                            json!({"type":if wifi {"wifi"} else {"action"},"success":true,"result":value})
+                        }
+                        Err(e) => {
+                            json!({"type":if wifi {"wifi"} else {"action"},"success":false,"error":format!("{e:#}")})
+                        }
                     };
                     if updates.send(update).is_err() {
                         break;
@@ -341,7 +370,7 @@ async fn run() -> Result<()> {
             }
         }
     });
-    let result = scene_loop(&o, &quit, server.as_ref(), requests, events).await;
+    let result = scene_loop(&o, &quit, server.as_ref(), Requests(requests), events).await;
     quit.store(true, Ordering::Relaxed);
     let _ = worker.join();
     if let Some(server) = server {
@@ -358,7 +387,7 @@ async fn scene_loop(
     o: &Options,
     quit: &AtomicBool,
     server: Option<&NotificationServer>,
-    requests: mpsc::Sender<(String, Option<String>)>,
+    requests: Requests,
     updates: mpsc::Receiver<Value>,
 ) -> Result<()> {
     let mut client = connect(o)?;
@@ -383,6 +412,7 @@ async fn scene_loop(
     let mut last_system = Value::Null;
     let mut requests_by_id = BTreeMap::<String, String>::new();
     let mut panels = scene::Panels::default();
+    let mut wifi = wifi::Wifi::default();
     while !quit.load(Ordering::Relaxed)
         && (o.seconds == 0 || start.elapsed() < Duration::from_secs(o.seconds))
     {
@@ -405,6 +435,47 @@ async fn scene_loop(
             if update["type"] == "probe" {
                 state = update["state"].clone();
                 scene_dirty = true;
+            } else if update["type"] == "wifi" {
+                wifi.busy = None;
+                wifi.message = if update["success"] == true {
+                    state["network"] =
+                        json!({"available":true,"state":update["result"]["observed"]});
+                    match update["result"]["action"].as_str() {
+                        Some("connect") => {
+                            wifi.clear_secret();
+                            if let Some(selected) = &wifi.selected {
+                                if let Some(fresh) =
+                                    wifi::access_points(&state).into_iter().find(|ap| {
+                                        ap.device == selected.device
+                                            && ap.ssid_bytes == selected.ssid_bytes
+                                            && ap.key_mgmt == selected.key_mgmt
+                                    })
+                                {
+                                    wifi.selected = Some(fresh);
+                                }
+                            }
+                            "连接成功".into()
+                        }
+                        Some("scan") => "扫描完成".into(),
+                        Some("radio") => "无线开关已更新".into(),
+                        Some("disconnect") => {
+                            wifi.back();
+                            "已断开连接".into()
+                        }
+                        _ => String::new(),
+                    }
+                } else {
+                    wifi.revealed = false;
+                    update["error"]
+                        .as_str()
+                        .unwrap_or("操作失败，请重试")
+                        .into()
+                };
+                println!(
+                    "XR_WIFI_RESULT={}",
+                    json!({"success":update["success"],"action":update["result"]["action"]})
+                );
+                scene_dirty = true;
             } else {
                 last_result = if update["success"] == true {
                     format!("已读回系统操作：{}", update["result"]["action"])
@@ -415,13 +486,26 @@ async fn scene_loop(
                 scene_dirty = true;
             }
         }
+        if !panels.wifi && wifi.selected.is_some() {
+            wifi.back();
+        }
+        if let Some(selected) = &wifi.selected {
+            if let Some(fresh) = wifi::access_points(&state).into_iter().find(|ap| {
+                ap.device == selected.device
+                    && ap.ssid_bytes == selected.ssid_bytes
+                    && ap.key_mgmt == selected.key_mgmt
+            }) {
+                wifi.selected = Some(fresh);
+            }
+        }
         let mut system = state.clone();
         system["notifications"] = json!({"available":server.is_some(),"owned_in_isolated_bus":server.is_some(),"count":notification_count,"entries":notices});
         system["clipboard"] = json!({"available":clipboard.is_some(),"mime_type":"text/plain;charset=utf-8","characters":clipboard.as_ref().map(|s|s.chars().count()),"text_preview":clipboard.as_ref().map(|s|s.chars().take(256).collect::<String>())});
         system["workspace"] =
             json!({"available":active_workspace.is_some(),"active_workspace":active_workspace});
         system["taskbar"] = json!({"available":true,"mode":taskbar_mode});
-        system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details,"keyboard_page":match panels.keyboard_page {scene::KeyboardPage::Letters => "letters",scene::KeyboardPage::Symbols => "symbols",scene::KeyboardPage::Chinese => "chinese"}});
+        system["panels"] = json!({"control":panels.control,"keyboard":panels.keyboard,"notifications":panels.notifications,"clipboard":panels.clipboard,"details":panels.details,"wifi":panels.wifi,"keyboard_page":match panels.keyboard_page {scene::KeyboardPage::Letters => "letters",scene::KeyboardPage::Symbols => "symbols",scene::KeyboardPage::Chinese => "chinese"}});
+        system["wifi_ui"] = json!({"busy":wifi.busy,"selected":wifi.selected.as_ref().map(|ap|&ap.id),"editing":wifi.editing,"message":wifi.message});
         if system != last_system {
             client.send("SystemState", system.clone(), &[])?;
             write_state(&o.state_file, &system)?;
@@ -436,6 +520,7 @@ async fn scene_loop(
                 clipboard.as_deref(),
                 &last_result,
                 &panels,
+                &wifi,
             );
             let mut ops = built.operations();
             let fresh: BTreeSet<String> = built.widgets.iter().map(|w| w.id.clone()).collect();
@@ -534,6 +619,13 @@ async fn scene_loop(
                         .as_str()
                         .context("component command missing intent")?;
                     if panels.command(panel, intent) {
+                        if panel == "wifi" {
+                            if !panels.wifi {
+                                wifi.back();
+                            } else {
+                                wifi_action("open", &mut wifi, &mut panels, &state, &requests)?;
+                            }
+                        }
                         println!("XR_SYSTEM_PANEL_COMMAND={payload}");
                         scene_dirty = true;
                     } else {
@@ -562,7 +654,10 @@ async fn scene_loop(
                         continue;
                     };
                     let action = action.as_str();
-                    if let Some(panel) = action.strip_prefix("ui:") {
+                    if let Some(intent) = action.strip_prefix("wifi:") {
+                        wifi_action(intent, &mut wifi, &mut panels, &state, &requests)?;
+                        scene_dirty = true;
+                    } else if let Some(panel) = action.strip_prefix("ui:") {
                         if panels.command(panel, "toggle") {
                             scene_dirty = true;
                         }
@@ -695,6 +790,115 @@ async fn scene_loop(
         )? != serde_json::to_value(&notices)?
         {
             scene_dirty = true;
+        }
+    }
+    Ok(())
+}
+
+fn wifi_action(
+    intent: &str,
+    wifi: &mut wifi::Wifi,
+    panels: &mut scene::Panels,
+    state: &Value,
+    requests: &Requests,
+) -> Result<()> {
+    match intent {
+        "open" => {
+            panels.wifi = true;
+            if wifi.busy.is_none()
+                && state["network"]["state"]["wireless_enabled"] == true
+                && state["network"]["state"]["wifi_usable"] == true
+            {
+                requests.wifi(network::Request::Scan)?;
+                wifi.busy = Some("scan");
+                wifi.message = "正在扫描附近网络…".into();
+            }
+        }
+        "back" => {
+            if wifi.selected.is_some() {
+                wifi.back();
+            } else {
+                panels.wifi = false;
+                panels.control = true;
+                wifi.clear_secret();
+            }
+        }
+        _ if wifi.busy.is_some() => {}
+        "prev" => {
+            wifi.page = wifi.page.saturating_sub(1);
+        }
+        "next" => {
+            wifi.page = (wifi.page + 1).min(
+                wifi::access_points(state)
+                    .len()
+                    .div_ceil(4)
+                    .saturating_sub(1),
+            );
+        }
+        "edit" => {
+            wifi.editing = !wifi.editing;
+            wifi.revealed = false;
+        }
+        "reveal" => {
+            wifi.revealed = !wifi.revealed;
+        }
+        "shift" => {
+            wifi.uppercase = !wifi.uppercase;
+        }
+        "symbols" => {
+            wifi.symbols = !wifi.symbols;
+        }
+        "delete" => {
+            wifi.password.pop();
+        }
+        "done" => {
+            wifi.editing = false;
+            wifi.revealed = false;
+        }
+        "scan" => {
+            requests.wifi(network::Request::Scan)?;
+            wifi.busy = Some("scan");
+            wifi.message = "正在扫描附近网络…".into();
+        }
+        "radio" => {
+            let enabled = state["network"]["state"]["wireless_enabled"] == true;
+            requests.wifi(network::Request::Radio(!enabled))?;
+            wifi.busy = Some("radio");
+            wifi.message = "正在更新无线开关…".into();
+        }
+        "disconnect" => {
+            if let Some(ap) = wifi.selected.clone() {
+                requests.wifi(network::Request::Disconnect(ap))?;
+                wifi.busy = Some("disconnect");
+                wifi.message = "正在断开连接…".into();
+            }
+        }
+        "connect" => {
+            if let Some(ap) = wifi.selected.clone() {
+                if network::valid_password(&ap, &wifi.password) {
+                    requests.wifi(network::Request::Connect {
+                        ap,
+                        password: wifi.password.clone(),
+                    })?;
+                    wifi.busy = Some("connect");
+                    wifi.message = "正在连接，请稍候…".into();
+                    wifi.revealed = false;
+                    wifi.editing = false;
+                }
+            }
+        }
+        _ => {
+            if let Some(id) = intent.strip_prefix("select:") {
+                if let Some(ap) = wifi::access_points(state)
+                    .into_iter()
+                    .find(|ap| ap.id == id)
+                {
+                    wifi.back();
+                    wifi.selected = Some(ap);
+                }
+            } else if let Some(value) = intent.strip_prefix("char:") {
+                wifi.append(value);
+            }
         }
     }
     Ok(())

@@ -1,3 +1,17 @@
+xr-system-ui (0.2.9) unstable; urgency=medium
+
+  * Keep password editing, keyboard and taskbar in separate angular bands.
+  * Use a compact password form while the secure keyboard is open.
+
+ -- bits <bigbits@hackx.cc>  Thu, 05 Nov 2026 04:30:31 +0800
+
+xr-system-ui (0.2.8) unstable; urgency=medium
+
+  * Add Qingkong Wi-Fi selection, secure password keyboard and connection feedback.
+  * Use NetworkManager D-Bus with observed scan/radio/activation state.
+
+ -- bits <bigbits@hackx.cc>  Thu, 05 Nov 2026 03:11:13 +0800
+
 xr-system-ui (0.2.7) unstable; urgency=medium
 
   * Add English symbol and Chinese punctuation pages to the spatial keyboard.
