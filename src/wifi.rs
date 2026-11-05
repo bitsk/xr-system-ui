@@ -100,9 +100,18 @@ fn short(value: &str, max: usize) -> String {
 fn group(s: &mut Scene, id: &str, logical: [f32; 2], size: [f32; 2], offset: [f32; 3]) -> String {
     // Shell freezes this offset relative to the current horizon/eye height on creation,
     // and uses the same user-facing frame for rendering and ray hits.
-    s.push(
-        Widget::spatial_group(id, logical, size, offset).with_spatial_policy("head_horizon_spawn"),
-    );
+    let delta = [offset[0], offset[1] - 1.6, offset[2]];
+    let horizontal = delta[0].hypot(delta[2]);
+    let yaw = (-delta[0]).atan2(-delta[2]).to_degrees().clamp(-35., 35.);
+    let pitch = delta[1].atan2(horizontal).to_degrees().clamp(-25., 10.);
+    s.push(Widget::horizon_panel(
+        id,
+        logical,
+        size,
+        yaw,
+        pitch,
+        horizontal.hypot(delta[1]).clamp(0.6, 4.),
+    ));
     let parent = format!("{id}-background");
     s.push(
         Widget::card(
@@ -543,9 +552,9 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
     let p = group(
         s,
         "wifi-password-panel",
-        [640., 320.],
-        [0.99, 0.496],
-        [0., 1.83, -1.65],
+        [640., 240.],
+        [0.78, 0.2925],
+        [0., 1.8084, -1.1818],
     );
     button(
         s,
@@ -579,25 +588,17 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
         s,
         &p,
         "wifi-ssid",
-        [28., 72., 584., 30.],
-        &short(&ap.ssid, 26),
+        [28., 72., 400., 30.],
+        &short(&ap.ssid, 16),
         false,
     );
     label(
         s,
         &p,
         "wifi-security",
-        [28., 104., 584., 28.],
+        [436., 74., 176., 28.],
         &ap.security,
         true,
-    );
-    label(
-        s,
-        &p,
-        "wifi-password-label",
-        [28., 140., 584., 28.],
-        "网络密码",
-        false,
     );
     let display = if wifi.password.is_empty() {
         "点此输入密码".into()
@@ -617,7 +618,7 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
         s,
         &p,
         "wifi-password",
-        [28., 180., 448., 60.],
+        [28., 112., 448., 52.],
         &display,
         "wifi:edit",
         true,
@@ -627,7 +628,7 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
         s,
         &p,
         "wifi-reveal",
-        [492., 180., 120., 60.],
+        [492., 112., 120., 52.],
         if wifi.revealed { "隐藏" } else { "显示" },
         "wifi:reveal",
         true,
@@ -637,7 +638,7 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
         s,
         &p,
         "wifi-cancel",
-        [28., 256., 280., 52.],
+        [28., 180., 280., 48.],
         "取消",
         "wifi:back",
         true,
@@ -647,7 +648,7 @@ fn password_editor(s: &mut Scene, wifi: &Wifi) {
         s,
         &p,
         "wifi-connect",
-        [332., 256., 280., 52.],
+        [332., 180., 280., 48.],
         "连接",
         "wifi:connect",
         valid_password(ap, &wifi.password),
@@ -660,7 +661,7 @@ fn keyboard(s: &mut Scene, wifi: &Wifi) {
         "wifi-keyboard-panel",
         [1000., 280.],
         [1.65, 0.462],
-        [0., 1.295, -1.57],
+        [0., 1.393, -1.57],
     );
     label(
         s,

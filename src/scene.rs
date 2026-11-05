@@ -120,9 +120,15 @@ fn spatial(
     logical: [f32; 2],
     size: [f32; 2],
     position: [f32; 3],
-    rotation: [f32; 3],
+    _rotation: [f32; 3],
 ) -> String {
-    let mut group = Widget::spatial_group(id, logical, size, position).with_rotation(rotation);
+    // Legacy design offsets become explicit horizon angles at the component boundary.
+    let delta = [position[0], position[1] - 1.6, position[2]];
+    let horizontal = delta[0].hypot(delta[2]);
+    let pitch = delta[1].atan2(horizontal).to_degrees().clamp(-25., 10.);
+    let yaw = (-delta[0]).atan2(-delta[2]).to_degrees().clamp(-35., 35.);
+    let distance = horizontal.hypot(delta[1]).clamp(0.6, 4.);
+    let mut group = Widget::horizon_panel(id, logical, size, yaw, pitch, distance);
     group.style_id = "panel.background".into();
     s.push(group);
     let background = format!("{id}-background");
@@ -189,11 +195,17 @@ pub fn build(
     .with_rotation([0., -18., 0.]);
     status_island(&mut s, state);
     if panels.control && !panels.wifi {
-        s.push(Widget::card(
-            "panel",
-            [0., 0., 600., 700.],
-            "panel.background",
+        s.push(Widget::horizon_panel(
+            "control-space",
+            [600., 700.],
+            [0.60, 0.70],
+            -35.,
+            0.,
+            2.1,
         ));
+        s.push(
+            Widget::card("panel", [0., 0., 600., 700.], "panel.background").parent("control-space"),
+        );
         if panels.details {
             details(&mut s, state, active_workspace, last_result);
         } else {
@@ -693,7 +705,7 @@ fn keyboard(s: &mut Scene, state: &Value, page: KeyboardPage) {
         "keyboard-panel",
         [1000., 280.],
         [1.053, 0.29484],
-        [0., 0.54, -1.27],
+        [0., 1.27, -1.62],
         [16.5, 0., 0.],
     );
     text(
@@ -878,7 +890,7 @@ fn notifications(s: &mut Scene, state: &Value, notices: &[Notice]) {
         "notifications-panel",
         [600., 340.],
         [0.60, 0.34],
-        [0., 2.38, -1.78],
+        [0., 1.69, -1.78],
         [0., 0., 0.],
     );
     text(

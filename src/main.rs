@@ -159,6 +159,7 @@ fn connect(o: &Options) -> Result<Client> {
             "core.v1",
             "scene.v1",
             "scene.spatial-policy.v1",
+            "scene.spherical-placement.v1",
             "taskbar.v1",
             "snapshot.v1",
             "input.v1",
