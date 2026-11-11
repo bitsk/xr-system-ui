@@ -1,3 +1,10 @@
+xr-system-ui (0.2.13) unstable; urgency=medium
+
+  * Group status controls in a compact island without vertical separators.
+  * Keep real battery readings in a dedicated micro capsule.
+
+ -- bits <bigbits@hackx.cc>  Wed, 11 Nov 2026 18:55:54 +0800
+
 xr-system-ui (0.2.12) unstable; urgency=medium
 
   * Reflow the Wi-Fi password form and keep it in front of default app windows.

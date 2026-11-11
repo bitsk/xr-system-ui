@@ -20,7 +20,7 @@ use distinct absolute STAGE panel transforms, rather than a tall debug sheet.
 
 | Panel | Logical pixels | Physical metres | STAGE centre | Rotation `[pitch,yaw,roll]` |
 | --- | --- | --- | --- | --- |
-| Right status island | 360 × 72 | .576 × .1152 | `[.8672,.86,-1.72]` | `[12,0,0]` |
+| Right status island | 340 × 72 | .544 × .1152 | `[.77718,.86,-1.53440]` | shared reading pitch / inward yaw |
 | Control centre | 600 × 700 | .60 × .70 | `[1.18,1.60,-1.74]` | `[0,-18,0]` |
 | Keyboard | 1000 × 280 | 1.053 × .29484 | `[0,.54,-1.27]` | `[16.5,0,0]` |
 | Notifications | 600 × 340 | .60 × .34 | `[0,2.38,-1.78]` | `[0,0,0]` |
@@ -238,3 +238,5 @@ network names are design labels, never runtime data. Interfaces follow the
 and [wireless device API](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Device.Wireless.html).
 
 The compact input layout is drawn in [keyboard layout](design/wifi/wifi-keyboard-layout.svg). Native verification found the original lower keyboard overlapping the taskbar; the compact form and raised keyboard replace that layout.
+
+The compact status island uses individual network/audio/settings trays and a battery micro capsule. Battery values remain adapter readings; unavailable states remain explicit. Internal vertical separators are omitted.

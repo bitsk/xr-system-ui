@@ -267,7 +267,7 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::button(
             "status-network",
-            [26., 10., 52., 52.],
+            [16., 10., 52., 52.],
             "",
             "wifi:open",
             "dock.status-icon",
@@ -275,18 +275,11 @@ fn status_island(s: &mut Scene, state: &Value) {
         .with_icon(network_icon)
         .parent(parent),
     );
-    for (id, x) in [
-        ("status-network-separator", 96.),
-        ("status-volume-separator", 184.),
-        ("status-settings-separator", 350.),
-    ] {
-        s.push(Widget::card(id, [x, 20., 1., 32.], "taskbar.separator").parent(parent));
-    }
     let mute = state["volume"]["state"]["muted"].as_bool();
     s.push(
         Widget::button(
             "status-volume",
-            [112., 10., 52., 52.],
+            [84., 10., 52., 52.],
             "",
             "mute-toggle",
             "dock.status-icon",
@@ -299,6 +292,14 @@ fn status_island(s: &mut Scene, state: &Value) {
         .enabled(available(state, "volume") && mute.is_some())
         .parent(parent),
     );
+    s.push(
+        Widget::card(
+            "status-battery-pill",
+            [150., 12., 112., 48.],
+            "dock.battery-pill",
+        )
+        .parent(parent),
+    );
     let percent = state["battery"]["state"]["percent"]
         .as_f64()
         .filter(|n| available(state, "battery") && n.is_finite() && *n >= 0. && *n <= 100.);
@@ -308,7 +309,7 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::icon(
             "status-battery",
-            [206., 20., 40., 32.],
+            [158., 20., 36., 32.],
             &icon,
             "dock.status-icon",
         )
@@ -320,7 +321,7 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::text(
             "status-battery-percent",
-            [262., 12., 76., 48.],
+            [198., 12., 64., 48.],
             &label,
             "taskbar.status",
         )
@@ -329,7 +330,7 @@ fn status_island(s: &mut Scene, state: &Value) {
     s.push(
         Widget::button(
             "system",
-            [366., 10., 52., 52.],
+            [272., 10., 52., 52.],
             "",
             "ui:control",
             "dock.status-icon",
@@ -341,7 +342,7 @@ fn status_island(s: &mut Scene, state: &Value) {
         s.push(
             Widget::card(
                 "status-notification-dot",
-                [56., 14., 6., 6.],
+                [46., 14., 6., 6.],
                 "taskbar.running",
             )
             .parent(parent),
