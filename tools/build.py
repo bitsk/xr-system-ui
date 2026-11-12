@@ -34,5 +34,12 @@ manifest += '\n[[bin]]\nname = "xr-system-ui"\npath = ' + json.dumps(str(root / 
 shutil.copyfile(root / "Cargo.lock", build / "Cargo.lock")
 environment = os.environ.copy()
 environment.setdefault("CARGO_TARGET_DIR", str(root / "target"))
-subprocess.run(["cargo", "build", "--manifest-path", str(build / "Cargo.toml"),
-                "--offline", "--locked", "--release"], env=environment, check=True)
+command=["cargo"]
+if environment.get("XR_CARGO_CONFIG"):command += ["--config",environment["XR_CARGO_CONFIG"]]
+command += ["build","--manifest-path",str(build/"Cargo.toml"),"--offline","--locked","--release"]
+target=environment.get("XR_CARGO_TARGET")
+if target:command += ["--target",target]
+subprocess.run(command,env=environment,check=True)
+if target:
+    output=root/"target/release";output.mkdir(parents=True,exist_ok=True)
+    shutil.copy2(Path(environment["CARGO_TARGET_DIR"])/target/"release/xr-system-ui",output/"xr-system-ui")

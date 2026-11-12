@@ -315,8 +315,52 @@ pub fn notification_owner() -> Result<Value> {
         Ok(json!({"owner":null,"claim_requested":false}))
     }
 }
+fn xr_command(args: &[&str]) -> Result<Value> {
+    let out = Command::new("timeout")
+        .arg("30")
+        .arg("xr-session")
+        .arg("controls")
+        .args(args)
+        .output()
+        .context("connect XR session controls")?;
+    ensure!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Ok(serde_json::from_slice(&out.stdout).context("decode XR controls response")?)
+}
+fn xr_controls() -> Result<Value> {
+    let mut state = xr_command(&["get"])?;
+    ensure!(
+        state["session_active"] == true,
+        "XR controls are not active"
+    );
+    for (key, file) in [
+        ("runtime", "xr-input-status.json"),
+        ("scene", "xr-scene-controls.json"),
+    ] {
+        if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+            let path = std::path::PathBuf::from(dir).join(file);
+            if !std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age < std::time::Duration::from_secs(4))
+            {
+                continue;
+            }
+            if let Ok(bytes) = std::fs::read(path) {
+                if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+                    state[key] = value;
+                }
+            }
+        }
+    }
+    Ok(state)
+}
 pub fn probe() -> Value {
-    json!({"theme":capability(theme()),"volume":capability(volume()),
+    json!({"xr":capability(xr_controls()),"theme":capability(theme()),"volume":capability(volume()),
         "network":capability(network()),"battery":capability(battery()),"ime":capability(ime()),
         "notifications":capability(notification_owner()),
         "clipboard":{"available":false,"reason":"requires connected private Shell/Wayland selection bridge"},
@@ -325,6 +369,17 @@ pub fn probe() -> Value {
 
 pub fn action(name: &str, value: Option<&str>) -> Result<Value> {
     match name {
+        "xr-input" | "xr-hand-tracking" | "xr-passthrough" | "xr-double-tap" => {
+            let field = match name {
+                "xr-input" => "input_mode",
+                "xr-hand-tracking" => "hand_tracking_enabled",
+                "xr-passthrough" => "passthrough_enabled",
+                _ => "double_tap_enabled",
+            };
+            let value = value.context("XR control requires a value")?;
+            let observed = xr_command(&["set", field, value])?;
+            Ok(json!({"action":name,"observed":observed}))
+        }
         "theme" => {
             let target = value.context("theme requires ukui-light or ukui-dark")?;
             ensure!(

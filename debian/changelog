@@ -1,3 +1,9 @@
+xr-system-ui (0.2.14) unstable; urgency=medium
+
+  * Add XR interaction and passthrough switches to Control Center.
+
+ -- bits <bigbits@hackx.cc>  Thu, 12 Nov 2026 16:42:54 +0800
+
 xr-system-ui (0.2.13) unstable; urgency=medium
 
   * Group status controls in a compact island without vertical separators.

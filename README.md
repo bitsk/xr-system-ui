@@ -240,3 +240,7 @@ and [wireless device API](https://networkmanager.dev/docs/api/latest/gdbus-org.f
 The compact input layout is drawn in [keyboard layout](design/wifi/wifi-keyboard-layout.svg). Native verification found the original lower keyboard overlapping the taskbar; the compact form and raised keyboard replace that layout.
 
 The compact status island uses individual network/audio/settings trays and a battery micro capsule. Battery values remain adapter readings; unavailable states remain explicit. Internal vertical separators are omitted.
+
+## 交互与透视
+
+控制中心的“交互与透视”页提供手柄/手输入/自动模式、手势识别、透视与实验性双敲开关。操作通过既有系统工作线程调用 `xr-session controls`，状态同时读取会话控制器和 Shell 实际呈现信息；等待相机画面不显示为透视已经生效。双敲默认关闭，仍需佩戴实测。

@@ -702,6 +702,19 @@ async fn scene_loop(
                         }
                     } else if action == "refresh" {
                         requests.send(("refresh".into(), None))?;
+                    } else if let Some(value) = action.strip_prefix("xr-input:") {
+                        requests.send(("xr-input".into(), Some(value.into())))?;
+                    } else if let Some(key) = action.strip_prefix("xr-toggle:") {
+                        let (field, command) = match key {
+                            "hand_tracking" => ("hand_tracking_enabled", "xr-hand-tracking"),
+                            "passthrough" => ("passthrough_enabled", "xr-passthrough"),
+                            "double_tap" => ("double_tap_enabled", "xr-double-tap"),
+                            _ => bail!("unknown XR switch"),
+                        };
+                        let current = state["xr"]["state"]["preferences"][field]
+                            .as_bool()
+                            .context("XR switch state unavailable")?;
+                        requests.send((command.into(), Some((!current).to_string())))?;
                     } else if let Some(value) = action.strip_prefix("theme:") {
                         requests.send(("theme".into(), Some(value.into())))?;
                     } else if let Some(value) = action.strip_prefix("ime:") {

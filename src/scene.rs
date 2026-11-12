@@ -14,6 +14,7 @@ pub enum KeyboardPage {
 #[derive(Clone, Debug)]
 pub struct Panels {
     pub control: bool,
+    pub xr: bool,
     pub keyboard: bool,
     pub notifications: bool,
     pub clipboard: bool,
@@ -25,6 +26,7 @@ impl Default for Panels {
     fn default() -> Self {
         Self {
             control: true,
+            xr: false,
             keyboard: false,
             notifications: false,
             clipboard: false,
@@ -44,6 +46,7 @@ impl Panels {
         }
         let value = match panel {
             "control" => &mut self.control,
+            "xr" => &mut self.xr,
             "keyboard" => &mut self.keyboard,
             "notifications" => &mut self.notifications,
             "clipboard" => &mut self.clipboard,
@@ -57,7 +60,13 @@ impl Panels {
             "toggle" => !*value,
             _ => return false,
         };
+        if panel == "xr" && self.xr {
+            self.control = true;
+            self.details = false;
+            self.wifi = false;
+        }
         if panel == "control" && self.control {
+            self.xr = false;
             self.details = false;
             self.wifi = false;
         }
@@ -206,7 +215,9 @@ pub fn build(
         s.push(
             Widget::card("panel", [0., 0., 600., 700.], "panel.background").parent("control-space"),
         );
-        if panels.details {
+        if panels.xr {
+            xr_controls(&mut s, state);
+        } else if panels.details {
             details(&mut s, state, active_workspace, last_result);
         } else {
             control(&mut s, state);
@@ -524,8 +535,17 @@ fn control(s: &mut Scene, state: &Value) {
     button(
         s,
         "panel",
+        "xr-controls-open",
+        [28., 650., 172., 36.],
+        "交互与透视",
+        "ui:xr",
+        true,
+    );
+    button(
+        s,
+        "panel",
         "details-toggle",
-        [28., 650., 264., 36.],
+        [214., 650., 172., 36.],
         "系统详情",
         "ui:details",
         true,
@@ -534,11 +554,136 @@ fn control(s: &mut Scene, state: &Value) {
         s,
         "panel",
         "applications",
-        [308., 650., 264., 36.],
+        [400., 650., 172., 36.],
         "应用库",
         "launcher-toggle",
         true,
     );
+}
+fn xr_controls(s: &mut Scene, state: &Value) {
+    text(
+        s,
+        "panel",
+        "xr-title",
+        [28., 22., 430., 38.],
+        "交互与透视",
+        false,
+    );
+    button(
+        s,
+        "panel",
+        "xr-back",
+        [500., 20., 72., 44.],
+        "返回",
+        "ui:xr",
+        true,
+    );
+    let ready = available(state, "xr");
+    let xr = &state["xr"]["state"];
+    let prefs = &xr["preferences"];
+    text(
+        s,
+        "panel",
+        "xr-input-title",
+        [28., 92., 500., 30.],
+        "输入方式",
+        false,
+    );
+    for (mode, x, label) in [
+        ("auto", 28., "自动"),
+        ("controllers", 214., "手柄"),
+        ("hands", 400., "手势"),
+    ] {
+        s.push(
+            Widget::button(
+                &format!("xr-input-{mode}"),
+                [x, 138., 172., 52.],
+                label,
+                &format!("xr-input:{mode}"),
+                if prefs["input_mode"] == mode {
+                    "button.primary"
+                } else {
+                    "button.secondary"
+                },
+            )
+            .parent("panel")
+            .enabled(ready && (mode != "hands" || xr["capabilities"]["hand_tracking"] == true)),
+        );
+    }
+    let active = match xr["runtime"]["active_source"].as_str() {
+        Some("hands") => "当前：手势",
+        Some("controllers") => "当前：手柄",
+        _ => "等待有效输入",
+    };
+    text(
+        s,
+        "panel",
+        "xr-active-source",
+        [28., 206., 544., 32.],
+        if ready {
+            active
+        } else {
+            "XR 会话控制未连接"
+        },
+        true,
+    );
+    for (i, key, field, label) in [
+        (0, "hand_tracking", "hand_tracking_enabled", "手势识别"),
+        (1, "passthrough", "passthrough_enabled", "透视"),
+        (2, "double_tap", "double_tap_enabled", "双敲切换透视"),
+    ] {
+        let y = 270. + i as f32 * 104.;
+        let enabled = ready && xr["capabilities"][key] == true;
+        let on = prefs[field].as_bool();
+        text(
+            s,
+            "panel",
+            &format!("xr-{key}-label"),
+            [28., y, 350., 34.],
+            label,
+            false,
+        );
+        let status = if !enabled {
+            "不可用"
+        } else if key == "double_tap" {
+            "实验功能：轻敲头显侧面两下"
+        } else if key == "passthrough"
+            && on == Some(true)
+            && xr["scene"]["passthrough"]["render_active"] != true
+        {
+            "等待相机画面"
+        } else if on == Some(true) {
+            "已开启"
+        } else {
+            "已关闭"
+        };
+        text(
+            s,
+            "panel",
+            &format!("xr-{key}-status"),
+            [28., y + 38., 350., 28.],
+            status,
+            true,
+        );
+        s.push(
+            Widget::button(
+                &format!("xr-{key}-toggle"),
+                [428., y, 144., 54.],
+                if on == Some(true) { "关闭" } else { "开启" },
+                &format!("xr-toggle:{key}"),
+                if on == Some(true) {
+                    "button.primary"
+                } else {
+                    "button.secondary"
+                },
+            )
+            .parent("panel")
+            .enabled(enabled && on.is_some()),
+        );
+    }
+    if let Some(error) = xr["last_error"].as_str() {
+        text(s, "panel", "xr-error", [28., 606., 544., 60.], error, true);
+    }
 }
 fn details(s: &mut Scene, state: &Value, active_workspace: Option<u64>, last_result: &str) {
     text(
