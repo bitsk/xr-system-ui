@@ -646,7 +646,11 @@ fn xr_controls(s: &mut Scene, state: &Value) {
         let status = if !enabled {
             "不可用"
         } else if key == "double_tap" {
-            "实验功能：轻敲头显侧面两下"
+            if on == Some(true) && xr["double_tap_ready"] != true {
+                "等待头显传感器"
+            } else {
+                "实验功能：轻敲头显侧面两下"
+            }
         } else if key == "passthrough"
             && on == Some(true)
             && xr["scene"]["passthrough"]["render_active"] != true
