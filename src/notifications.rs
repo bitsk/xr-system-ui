@@ -46,7 +46,12 @@ impl Notifications {
         vec!["body", "actions"]
     }
     fn get_server_information(&self) -> (&str, &str, &str, &str) {
-        ("UKUI XR", "openKylin XR", env!("CARGO_PKG_VERSION"), "1.2")
+        (
+            "HyperSpace",
+            "openKylin XR",
+            env!("CARGO_PKG_VERSION"),
+            "1.2",
+        )
     }
     #[allow(clippy::too_many_arguments)]
     fn notify(

@@ -316,10 +316,18 @@ pub fn notification_owner() -> Result<Value> {
     }
 }
 fn xr_command(args: &[&str]) -> Result<Value> {
+    let configured = std::env::var("XR_SYSTEM_CONTROLS_COMMAND").context(
+        "XR controls are owned by the active runtime; no system controls provider configured",
+    )?;
+    let provider: Vec<String> = serde_json::from_str(&configured)
+        .context("XR_SYSTEM_CONTROLS_COMMAND must be a JSON argv array")?;
+    ensure!(
+        !provider.is_empty() && std::path::Path::new(&provider[0]).is_absolute(),
+        "XR controls provider requires an absolute executable path"
+    );
     let out = Command::new("timeout")
         .arg("30")
-        .arg("xr-session")
-        .arg("controls")
+        .args(&provider)
         .args(args)
         .output()
         .context("connect XR session controls")?;
@@ -336,12 +344,12 @@ fn xr_controls() -> Result<Value> {
         state["session_active"] == true,
         "XR controls are not active"
     );
-    for (key, file) in [
-        ("runtime", "xr-input-status.json"),
-        ("scene", "xr-scene-controls.json"),
+    for (key, variable) in [
+        ("runtime", "XR_INPUT_STATUS_FILE"),
+        ("scene", "XR_SCENE_CONTROLS_STATUS_FILE"),
     ] {
-        if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-            let path = std::path::PathBuf::from(dir).join(file);
+        if let Some(path) = std::env::var_os(variable) {
+            let path = std::path::PathBuf::from(path);
             if !std::fs::metadata(&path)
                 .and_then(|m| m.modified())
                 .ok()

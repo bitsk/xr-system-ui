@@ -1,3 +1,9 @@
+xr-system-ui (0.3.0) unstable; urgency=medium
+
+  * Use an explicit system controls provider and observed status paths for HyperSpace.
+
+ -- bits <bigbits@hackx.cc>  Mon, 16 Nov 2026 16:54:22 +0800
+
 xr-system-ui (0.2.15) unstable; urgency=medium
 
   * Show double-tap sensor readiness separately from its requested switch.

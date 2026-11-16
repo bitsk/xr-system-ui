@@ -1,4 +1,4 @@
-# UKUI XR system components
+# HyperSpace system components
 
 An independent Rust scene client for the UKUI XR control centre, notifications
 and spatial keyboard. Spatial Kit owns widgets; Shell owns rendering, focus and
@@ -243,4 +243,15 @@ The compact status island uses individual network/audio/settings trays and a bat
 
 ## 交互与透视
 
-控制中心的“交互与透视”页提供手柄/手输入/自动模式、手势识别、透视与实验性双敲开关。操作通过既有系统工作线程调用 `xr-session controls`，状态同时读取会话控制器和 Shell 实际呈现信息；等待相机画面不显示为透视已经生效。双敲默认关闭，仍需佩戴实测。
+控制中心的“交互与透视”页提供手柄/手输入/自动模式、手势识别、透视与实验性双敲开关。操作通过既有系统工作线程调用显式配置的系统控制提供者，状态同时读取会话控制器和 Shell 实际呈现信息；等待相机画面不显示为透视已经生效。双敲默认关闭，仍需佩戴实测。
+
+## System controls provider
+
+`XR_SYSTEM_CONTROLS_COMMAND` is a JSON argv array with an absolute executable,
+for example `["/usr/bin/xr-session", "controls"]` supplied by the XROS session
+adapter. The component appends `get` or `set FIELD VALUE`; no shell expansion
+or implicit provider discovery is used. Responses use the session controls
+schema owned by xr-session-manager. Missing providers are shown as unavailable,
+not as successful operations. `XR_INPUT_STATUS_FILE` and
+`XR_SCENE_CONTROLS_STATUS_FILE` identify optional observed state; their paths
+are not inferred from this component's private XDG runtime directory.
