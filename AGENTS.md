@@ -15,3 +15,9 @@ session manager. Installing packages must not start competing services.
 Keep complete Git history and real contributor identity/dates. Public files
 must not contain personal paths, LAN addresses, credentials or private device
 identity. Cross-repository plans belong in openkylin-xr-docs.
+
+## XR Spatial Engineering Constraints
+
+Follow `openkylin-xr-docs/wiki/xr-spatial-guidelines-and-issues.md`:
+- **Neck & FOV Comfort Zone**: Keep all system panels (control center, notifications, clipboard, virtual keyboard) within the ergonomic vertical FOV (`[-25°, +10°]` relative to eye height) and horizontal comfort zone (`[-35°, +35°]`). Never place notification or utility panels high above eye level (e.g. `Y = 2.38 m`) or without pitch compensation toward the user's eyes.
+- **Horizon-Relative Summoning**: Summon on-demand panels (keyboard, control center, clipboard, notifications) relative to the user's current horizon-projected head yaw and eye height, then lock them in world space facing the binocular center-eye pose.
